@@ -1,0 +1,125 @@
+/* =========================================================
+   1 · LA PALETA DEL CURSO
+   Se escribe UNA sola vez, acá arriba. Todo lo demás usa var().
+   ========================================================= */
+:root { /*guarda los colores de la variable*/
+  /* Los seis colores de la identidad del CET */
+  --plateado:   #a9a9a9;
+  --plateado-os:   #8A8A8A;
+  --plate:      #d933d9;
+  --pp:  #edb0da;
+  --azul-tec: #0A8BAA;
+  --rosaa:    #d933d9;
+
+  /* Escala del violeta */
+  --fondo: #cf9ccf;
+  --violeta-800: #221F51;
+  --rosita: #590248;
+  --violeta-500: #4A4685;
+  --violeta-300: #df5ee6;
+  --violeta-200: #9B99C4;
+  --violeta-100: #C3C1DD;
+  --violeta-50:  #E0DFEE;
+  --negro:  #000007;
+--gris:  #4d4c4c;
+ 
+
+  --texto:       #eb87c3;
+  --texto-suave: #edb0da;
+  --blanco:      #eb2121;
+}
+
+/* =========================================================
+   2 · LA PÁGINA ENTERA
+   display:flex + justify-content:center centran la tarjeta
+   en pantalla sin usar márgenes a ojo.
+   ========================================================= */
+body {
+  margin: 0; /*elimina el margen. puede ocupar hasta el borde de la pantalla*/
+  min-height: 100vh; /*altu
+  font-weight: 700;/ra maxima. el body ocupa toda la pantalla*/
+  display: flex;/*organizar  los elementos hijos del body. controla facilmente donde aparecen las tarjetas */
+  align-items: center;/*centra los elkemtentos en el eje vertical del flex. el eje principal pasa a estar vertical*/
+  justify-content: center;/*centra lso elemnetos en el eje principal. las tarjetas quedam centradas vertical*/
+  background: var(--fondo);/*establece el color del fondo. toda la pantalla tiene un color lila*/
+  font-family: "Poppins", "Segoe UI", Arial, sans-serif;/*fuente de letra*/
+  color: var(--texto);/*color de texto prederteminando en el body. los textos que no tenga color se quede con el color ese*/
+}
+
+/* =========================================================
+   3 · LA TARJETA
+   ========================================================= */
+.tarjeta {
+  background: var(--negro);/*color del fondo que es negro*/
+  border-top: 15px solid var(--plateado-os);/*crea un borde solomente arriba, que es de color gris*/
+  border-radius: 12px;/*redondea las esuinas*/
+  padding: 2.5rem 2rem;/* tiene espacio adento de la tarjeta, el contenido no queda pegado al los bordes  */
+  text-align: center;/*centra horizontalmente el texto y elementos del texto*/
+  max-width: 400px;/*limita el maximo ancho de la tarjeta */
+}
+
+/* =========================================================
+   4 · CADA PARTE DE LA TARJETA
+   ========================================================= */
+.logo {  /*define el ancho y el alto del logo*/
+  width: 200px; /*ancho*/
+  height: 200px;/*alto*/
+  object-fit: contain;/*hace q la imagen enre dentro de las dimisiones,el logo no aparece estirado */
+}
+
+.curso {
+  margin: .75rem 0 0;/*agrega margen*/
+  font-size: .80rem;/*tamaño de texto*/
+  font-weight: 600;/*grosol de la letra*/
+  letter-spacing: .17em;/*aumenta el espacio entre letras*/
+  text-transform: uppercase;/*convierte el texto a mayuscula*/
+  color: var(--rosaa);/*cambia el color de texto*/
+}
+
+.nombre {
+  margin: .4rem 0 0;/*agerga el margen*/
+  font-size: 2.2rem;/*tamaño de texto*/
+  letter-spacing: -0.01em;/*reduce el espacio de letras*/
+  color: var(--plateado);/*color de la fuente */
+}
+
+.tarjeta__frase {
+  margin: 1rem 0 0;/*agrega margen*/
+  font-size: 1.25rem;/*tamaño de texto*/
+  line-height: 1.55;/*controla la separacion vertical entre lineas */
+  color: var(--ritosa);/*cambia el color de texto*/
+}
+
+.autor {
+  margin: 1.25rem 0 0;/*agrega margen*/
+  font-size: .82rem;/*tamaño de texto*/
+  color: var(--texto-suave);/*cambia el color de texto*/
+}
+/* Variante oscura: mismo bloque, otra combinación de la paleta */
+.oscura {
+  background: var(--gris); /*cambia el fondo de una tarjeta*/
+  border-top-color: var(--palte);/*borde superior de la tarjeta */
+}
+
+.pregunta {
+  margin: 0;/*agrega margen*/
+  font-size: .8rem;/*tamaño de texto*/
+  font-weight: 600;/*ancho de texto*/
+  letter-spacing: .14em;/*reduce el espacio de letras*/
+  text-transform: uppercase;/*pasa a mayuscula*/
+  color: var(--plate);/*cambia el color de texto*/
+}
+
+.respuesta {
+  margin: .5rem 0 0;/*agrega margen*/
+  font-size: 1.4rem;/*tamaño de texto*/
+  font-weight: 700;/*ancho de texto*/
+  color: var(--pp);/*color de fondo*/
+}
+
+/* Para que las dos tarjetas se apilen con un hueco entre ellas */
+body {
+  flex-direction: column;/*direccion de los elemntos*/
+  gap: 2rem;/*espacio entre elemntos*/
+  padding: 2rem 1rem;/* se adapta una imagen a su tamaños*/
+}

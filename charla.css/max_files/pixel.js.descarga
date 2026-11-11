@@ -1,0 +1,2393 @@
+(function () {
+
+  // =========================
+  // A) UTM / Snowplow contexts (UNA VEZ)
+  // =========================
+  try {
+    if (!window.__UTM_CONTEXT_REGISTERED__) {
+      window.__UTM_CONTEXT_REGISTERED__ = true;
+
+      // ---- CONFIG ----
+      var STORAGE_KEYS = {
+        utm_source:  'ams_s',
+        utm_medium:  'ams_m',
+        utm_campaign:'ams_c',
+        utm_term:    'ams_t',
+        utm_content: 'ams_co',
+        ams_auction: 'ams_a',
+        gad_source:  'ams_gad',
+        fbclid:      'ams_fbclid',
+        ttclid:      'ams_ttclid',
+        gclid:       'ams_gclid',
+        gbraid:      'ams_gbraid',
+        wbraid:      'ams_wbraid'
+      };
+
+      var COOKIE_DAYS = 90;
+      var EXP_MS = COOKIE_DAYS * 24 * 60 * 60 * 1000;
+
+      // ---- HELPERS ----
+      function now(){ return Date.now(); }
+
+      function getCookie(name){
+        try{
+          var nameEQ = name + "=";
+          var ca = document.cookie.split(';');
+          for (var i=0;i<ca.length;i++){
+            var c = ca[i].trim();
+            if (c.indexOf(nameEQ) === 0) return decodeURIComponent(c.substring(nameEQ.length));
+          }
+        }catch(e){}
+        return null;
+      }
+
+      function getStored(shortKey){
+        // 1) sessionStorage
+        try{
+          var sv = sessionStorage.getItem(shortKey);
+          if (sv != null && sv !== 'null' && sv !== '') return sv;
+        }catch(e){}
+        // 2) localStorage (3 variantes: *_ts, {v,ts}, plano)
+        try{
+          var lv = localStorage.getItem(shortKey);
+          if (lv != null && lv !== 'null' && lv !== '') {
+            var tsStr = localStorage.getItem(shortKey + '_ts');
+            if (tsStr){
+              var ts = parseInt(tsStr,10);
+              if (!isNaN(ts) && (now() - ts) <= EXP_MS) return lv;
+              localStorage.removeItem(shortKey); localStorage.removeItem(shortKey+'_ts');
+            } else {
+              try{
+                var parsed = JSON.parse(lv);
+                if (parsed && typeof parsed === 'object' && 'v' in parsed){
+                  if (!parsed.ts || (now() - parsed.ts) <= EXP_MS) return String(parsed.v);
+                  localStorage.removeItem(shortKey);
+                } else {
+                  return lv;
+                }
+              }catch(_){
+                return lv;
+              }
+            }
+          }
+        }catch(e){}
+        // 3) cookie
+        var cv = getCookie(shortKey);
+        if (cv != null && cv !== 'null' && cv !== '') return cv;
+        return null;
+      }
+
+      function normalizeSource(val){
+        if (val == null) return null;
+        var trimmed = (''+val).trim();
+        if (!trimmed) return null;
+        if (/^\d+$/.test(trimmed)) return null;
+        return trimmed;
+      }
+
+      // Devuelve la fuente Y la clave de storage que la determino.
+      //
+      // Hace falta saber la clave para poder fechar el touch: cuando la fuente
+      // se infiere de un click id (el caso tipico de Google Ads, que auto-taggea
+      // con gclid y sin utm_source), el timestamp del touch NO esta en ams_s_ts
+      // sino en el _ts de la clave que gano. Tomarlo siempre de ams_s_ts
+      // devolveria null justo en esos casos.
+      function resolveUtmSourceEntry(){
+        var us = normalizeSource(getStored(STORAGE_KEYS.utm_source));
+        if (us) return { source: us, key: STORAGE_KEYS.utm_source };
+
+        // Google: si existe cualquier parámetro de Google, inferir "google"
+        var gclid  = getStored(STORAGE_KEYS.gclid);
+        if (gclid)  return { source: 'google', key: STORAGE_KEYS.gclid };
+
+        var gbraid = getStored(STORAGE_KEYS.gbraid);
+        if (gbraid) return { source: 'google', key: STORAGE_KEYS.gbraid };
+
+        var wbraid = getStored(STORAGE_KEYS.wbraid);
+        if (wbraid) return { source: 'google', key: STORAGE_KEYS.wbraid };
+
+        var gad    = getStored(STORAGE_KEYS.gad_source);
+        if (gad)    return { source: 'google', key: STORAGE_KEYS.gad_source };
+
+        var fb  = getStored(STORAGE_KEYS.fbclid);
+        if (fb) return { source: 'facebook', key: STORAGE_KEYS.fbclid };
+
+        var tt  = getStored(STORAGE_KEYS.ttclid);
+        if (tt) return { source: 'tiktok', key: STORAGE_KEYS.ttclid };
+
+        return { source: null, key: null };
+      }
+
+      // Momento en que llego el touch, en ISO 8601 UTC.
+      //
+      // Sale del <clave>_ts que escribe setLS() en storage.js. Es fiable como
+      // fecha de touch porque persistValue() corta cuando el valor no cambio,
+      // asi que el _ts conserva el momento del ULTIMO CAMBIO y no se refresca
+      // en cada pageview.
+      //
+      // Devuelve null si no hay localStorage (el valor sobrevivio solo en
+      // cookie) o si el timestamp no es plausible. El schema valida
+      // format:date-time, asi que un valor invalido no degrada el campo: tira
+      // el evento entero a bad rows. Por eso todas las guardas.
+      function touchTstampFor(shortKey){
+        if (!shortKey) return null;
+
+        try {
+          var raw = localStorage.getItem(shortKey + '_ts');
+          if (!raw) return null;
+
+          var ts = parseInt(raw, 10);
+          if (!ts || isNaN(ts)) return null;
+
+          var d = new Date(ts);
+          if (isNaN(d.getTime())) return null;
+
+          // Un _ts en segundos en lugar de milisegundos daria 1970 y seria un
+          // ISO valido pero basura. Mejor null que envenenar la atribucion.
+          var year = d.getUTCFullYear();
+          if (year < 2020 || year > 2100) return null;
+
+          return d.toISOString();
+        } catch(e) {
+          return null;
+        }
+      }
+
+      function buildUtmContext(){
+        var entry = resolveUtmSourceEntry();
+
+        var ctx = {
+          schema: 'iglu:com.admedia/marketing_utm/jsonschema/1-0-2',
+          data: {
+            utm_source:  entry.source,
+            utm_medium:  getStored(STORAGE_KEYS.utm_medium)   || null,
+            utm_campaign:getStored(STORAGE_KEYS.utm_campaign) || null,
+            utm_term:    getStored(STORAGE_KEYS.utm_term)     || null,
+            utm_content: getStored(STORAGE_KEYS.utm_content)  || null,
+            auction_id:  getStored(STORAGE_KEYS.ams_auction)  || null,
+            utm_tstamp:  touchTstampFor(entry.key)
+          }
+        };
+
+        // utm_tstamp NO entra en el chequeo: solo fecha a los demas campos, no
+        // es atribucion por si mismo. Si todo lo demas es null no hay touch y
+        // el context no se adjunta, igual que antes.
+        var d = ctx.data;
+        var allNull = (d.utm_source==null && d.utm_medium==null && d.utm_campaign==null && d.utm_term==null && d.utm_content==null && d.auction_id==null);
+        return allNull ? null : ctx;
+      }
+
+      // Dynamic global context (Snowplow JS Tracker 3.16.0).
+      //
+      // Antes se registraba el OBJETO devuelto por buildUtmContext(), o sea un
+      // snapshot congelado en el momento del registro. En una SPA la
+      // atribucion puede cambiar legitimamente sin reload (google -> meta) y
+      // los eventos siguientes seguian viajando con la fuente vieja.
+      //
+      // Registrando la FUNCION, el tracker la ejecuta al construir cada evento
+      // y marketing_utm se calcula con el storage actual. 3.16.0 acepta
+      // funciones como global context primitive y filtra un retorno
+      // undefined/null sin impedir que el evento se envie.
+      function marketingUtmContextGenerator(){
+        try {
+          // buildUtmContext() ya devuelve null si los seis campos son null,
+          // que es el mismo caso en el que antes no se registraba nada: el
+          // evento sale sin context de marketing_utm.
+          return buildUtmContext() || undefined;
+        } catch(_) {
+          return undefined;
+        }
+      }
+
+      function register(){
+        if (!window.snowplow) return false;
+        // Un solo addGlobalContexts, una sola funcion. El guard
+        // __UTM_CONTEXT_REGISTERED__ de mas arriba evita el doble registro.
+        window.snowplow('addGlobalContexts', [marketingUtmContextGenerator]);
+        return true;
+      }
+
+      if (!register()){
+        var it = setInterval(function(){
+          if (register()) clearInterval(it);
+        }, 100);
+      }
+    }
+  } catch(_) {}
+
+  // =========================
+  // A2) Snowplow self-describing events propios (com.admedia/*) -> iid
+  // =========================
+  // Algunos sitios disparan item_view/add_to_cart/cart via un tag de Snowplow
+  // en GTM que llama trackSelfDescribingEvent/trackUnstructEvent directamente
+  // (schemas iglu:com.admedia/itemview, add_to_cart, cart), sin pasar nunca
+  // por window.dataLayer.push. Hasta ahora ese canal no alimentaba iid, y
+  // ahi se perdia la oportunidad de matchear en DoubleClick pese a que el
+  // evento sale perfecto por Snowplow (se ve como ue_px en el request a
+  // /tp2). Este bloque escucha esas llamadas y alimenta EXACTAMENTE los
+  // mismos mecanismos que ya usa el resto del pixel: fireRealtimeAudienceEvent
+  // para item_view (mismo dedupe) y ams_last_item_id/ams_last_cart_event para
+  // add_to_cart/cart (mismos campos que lee getCartEvent()/getItemId() en el
+  // fire() de base). No duplica logica de disparo ni de dedupe.
+  try {
+    if (!window.__AMS_SP_ITEM_SCHEMA_TRACKING__) {
+      window.__AMS_SP_ITEM_SCHEMA_TRACKING__ = true;
+
+      var ITEMVIEW_SCHEMA_RE = /^iglu:com\.admedia\/itemview\/jsonschema\/\d+-\d+-\d+$/i;
+      var ADD_TO_CART_SCHEMA_RE = /^iglu:com\.admedia\/add_to_cart\/jsonschema\/\d+-\d+-\d+$/i;
+      var CART_SCHEMA_RE = /^iglu:com\.admedia\/cart\/jsonschema\/\d+-\d+-\d+$/i;
+
+      // Del schema "cart" (carrito completo, no un solo add) tomamos el
+      // item de mayor price: es el criterio que pidieron para representar
+      // el carrito con un unico iid cuando hay varios productos.
+      function pickHighestPriceItem(items){
+        var top = null;
+        var topPrice = -Infinity;
+        for (var i = 0; i < items.length; i++) {
+          var it = items[i];
+          if (!it || it.itemId == null) continue;
+          var price = Number(it.price);
+          if (isNaN(price)) price = -Infinity;
+          if (!top || price > topPrice) {
+            top = it;
+            topPrice = price;
+          }
+        }
+        return top;
+      }
+
+      function handleAdmediaSelfDescribingEvent(sdj){
+        try {
+          if (!sdj || typeof sdj !== 'object') return;
+          var schema = sdj.schema;
+          var data = sdj.data;
+          if (!schema || typeof schema !== 'string' || !data) return;
+
+          if (ITEMVIEW_SCHEMA_RE.test(schema)) {
+            var viewItemId = data.itemId != null ? String(data.itemId) : null;
+            if (viewItemId) {
+              fireRealtimeAudienceEvent('item_view', viewItemId);
+            }
+            return;
+          }
+
+          if (ADD_TO_CART_SCHEMA_RE.test(schema)) {
+            var atcItemId = data.itemId != null ? String(data.itemId) : null;
+            if (atcItemId) {
+              try {
+                sessionStorage.setItem('ams_last_cart_event', 'add_to_cart');
+                sessionStorage.setItem('ams_last_cart_event_ts', Date.now().toString());
+                sessionStorage.setItem('ams_last_item_id', atcItemId);
+              } catch(e){}
+            }
+            return;
+          }
+
+          if (CART_SCHEMA_RE.test(schema)) {
+            try {
+              if (data.items && Array.isArray(data.items) && data.items.length > 0) {
+                var topItem = pickHighestPriceItem(data.items);
+                if (topItem) {
+                  sessionStorage.setItem('ams_last_cart_event', 'cart');
+                  sessionStorage.setItem('ams_last_cart_event_ts', Date.now().toString());
+                  sessionStorage.setItem('ams_last_item_id', String(topItem.itemId));
+                }
+              }
+            } catch(e){}
+            return;
+          }
+        } catch(e){}
+      }
+
+      // "trackSelfDescribingEvent" (API actual) o "trackUnstructEvent"
+      // (legacy), con o sin prefijo de tracker con nombre (ej.
+      // "tracker1.trackSelfDescribingEvent").
+      function isSelfDescribingCall(methodName){
+        if (!methodName || typeof methodName !== 'string') return false;
+        var lower = methodName.toLowerCase();
+        return lower.indexOf('trackselfdescribingevent') !== -1 ||
+               lower.indexOf('trackunstructevent') !== -1;
+      }
+
+      function interceptSnowplowArgs(args){
+        try {
+          if (!args || !args.length) return;
+          if (!isSelfDescribingCall(args[0])) return;
+
+          var payload = args[1];
+          // API actual (Snowplow JS Tracker 3.x): { event: { schema, data }, context? }
+          if (payload && payload.event && typeof payload.event === 'object') {
+            handleAdmediaSelfDescribingEvent(payload.event);
+          } else {
+            // API legacy: (schema, data) directo como segundo argumento
+            handleAdmediaSelfDescribingEvent(payload);
+          }
+        } catch(e){}
+      }
+
+      // window.snowplow arranca como cola de funcion (patron async-stub) y
+      // sp.js la puede REEMPLAZAR por la funcion real del tracker al cargar.
+      // Con un wrap unico se perderia la intercepcion en ese reemplazo, asi
+      // que usamos defineProperty para volver a envolver cada vez que algo
+      // asigna window.snowplow, sin importar cuantas veces pase.
+      function wrapSnowplowFn(fn){
+        if (typeof fn !== 'function' || fn.__ams_sp_wrapped__) return fn;
+        var wrapped = function(){
+          try { interceptSnowplowArgs(arguments); } catch(e){}
+          return fn.apply(this, arguments);
+        };
+        wrapped.__ams_sp_wrapped__ = true;
+        try {
+          for (var k in fn) {
+            if (Object.prototype.hasOwnProperty.call(fn, k)) wrapped[k] = fn[k];
+          }
+        } catch(e){}
+        return wrapped;
+      }
+
+      (function installSnowplowHook(){
+        try {
+          var current = window.snowplow;
+          Object.defineProperty(window, 'snowplow', {
+            configurable: true,
+            enumerable: true,
+            get: function(){ return current; },
+            set: function(fn){ current = wrapSnowplowFn(fn); }
+          });
+          if (typeof current === 'function') current = wrapSnowplowFn(current);
+        } catch(e) {
+          // defineProperty no disponible: wrap simple, sin proteccion ante
+          // un reemplazo posterior de window.snowplow.
+          try {
+            if (typeof window.snowplow === 'function') {
+              window.snowplow = wrapSnowplowFn(window.snowplow);
+            }
+          } catch(_){}
+        }
+      })();
+    }
+  } catch(_) {}
+
+  // =========================
+  // B) DoubleClick (CADA EJECUCIÓN, CON THROTTLE)
+  // =========================
+
+  // OPT-OUT: este script no puede leer la cookie OPT porque corre en el
+  // dominio del anunciante y OPT vive en .servicesadmedia.com. La lee el
+  // servidor al servir /pixel.js (el navegador la manda con el <script src>)
+  // y antepone window.__AMS_OPTOUT="1". Con la bandera no sale ningun request
+  // a cm.g.doubleclick.net; el resto del script funciona igual.
+  function isAmsOptedOut(){
+    try {
+      return window.__AMS_OPTOUT === "1";
+    } catch(e) {
+      return false;
+    }
+  }
+
+  // OPTIMIZACIÓN: Preconnect a Google Doubleclick para reducir latencia DNS/TCP/TLS
+  (function(){
+    try {
+      if (isAmsOptedOut()) return;
+
+      var link1 = document.createElement('link');
+      link1.rel = 'preconnect';
+      link1.href = 'https://cm.g.doubleclick.net';
+      link1.crossOrigin = 'anonymous';
+      
+      var link2 = document.createElement('link');
+      link2.rel = 'dns-prefetch';
+      link2.href = 'https://cm.g.doubleclick.net';
+      
+      var head = document.head || document.getElementsByTagName('head')[0];
+      if (head) {
+        head.appendChild(link1);
+        head.appendChild(link2);
+      }
+    } catch(e) {}
+  })();
+
+  // OPTIMIZACIÓN C: THROTTLE DESACTIVADO TEMPORALMENTE PARA TESTING
+  // Esto maximiza las oportunidades de matching durante el período de prueba (48h)
+  // Para reactivar throttle, descomentar el código siguiente:
+  /*
+  function dcThrottleOk(minMs){
+    try {
+      var k = "ams_dc_last_ms";
+      var last = parseInt(sessionStorage.getItem(k) || "0", 10);
+      var t = Date.now();
+      if (t - last < minMs) return false;
+      sessionStorage.setItem(k, String(t));
+    } catch(_) {}
+    return true;
+  }
+
+  var DC_MIN_MS = 1000;
+
+  function isFirstPageview() {
+    try {
+      var k = "ams_dc_first_fired";
+      if (!sessionStorage.getItem(k)) {
+        sessionStorage.setItem(k, "true");
+        return true;
+      }
+    } catch(e) {}
+    return false;
+  }
+
+  var skipThrottle = isFirstPageview();
+  if (!skipThrottle && !dcThrottleOk(DC_MIN_MS)) return;
+  */
+
+  //  Inserción segura en <body> 
+  function safeAppend(el) {
+    try {
+      if (document.body) {
+        document.body.appendChild(el);
+        return true;
+      }
+      var once = function () {
+        try {
+          document.removeEventListener('DOMContentLoaded', once);
+          if (document.body) document.body.appendChild(el);
+        } catch(_) {}
+      };
+      document.addEventListener('DOMContentLoaded', once);
+      return false;
+    } catch(_) { return false; }
+  }
+
+// ---------- BRIDGE DIRECTO (SIN IFRAME) ----------
+//  DEPRECADO: pixel_CM_bridge.html ya no se usa. Toda la lógica migró aquí.
+// Esta función reemplaza agregarSPviaIframe() ejecutando el matching directamente.
+
+// El pixel no manda google_hm: el valor que se aloja en Google lo pone
+// ams-user-sync en el 302 de /user_sync (la cookie sp en base64url).
+
+// Espera acotada por el domain_userid antes de armar el pixel.
+// Caso: sitios donde el dataLayer ya trae view_item ANTES de que cargue
+// Snowplow (ej. wildfork: view_item se pushea antes de gtm.dom). pixel.js lo
+// procesa como evento preexistente apenas se ejecuta, todavia no hay
+// domain_userid y el pixel salia sin domain_userid.
+// Si el domain_userid ya esta disponible se dispara en el acto, igual que antes.
+var DC_DUID_WAIT_MAX_MS = 8000;
+var DC_DUID_WAIT_STEP_MS = 150;
+
+function waitForDomainUserIdThen(callback){
+  var done = false;
+  var elapsed = 0;
+  var ticks = 0;
+
+  function finish(){
+    if (done) return;
+    done = true;
+    try { window.removeEventListener('pagehide', finish); } catch(_){}
+    callback();
+  }
+
+  function available(){
+    ticks++;
+    // Backup y cookie son lecturas baratas. La API de Snowplow encola un
+    // callback si el tracker aun no cargo, asi que se consulta cada ~600ms
+    // (el monitoreo de startSpDuidBackupMonitoring tambien la consulta).
+    if (getPersistedSpDomainUserId() || getSpDomainUserIdFromCookie()) return true;
+    if (ticks % 4 === 0 && window.snowplow) {
+      return !!getSnowplowDomainUserId();
+    }
+    return false;
+  }
+
+  try {
+    if (getSnowplowDomainUserId()) { finish(); return; }
+
+    // Si el usuario sale antes de que aparezca el duid, disparar con lo que haya.
+    try { window.addEventListener('pagehide', finish); } catch(_){}
+
+    var it = setInterval(function(){
+      try {
+        elapsed += DC_DUID_WAIT_STEP_MS;
+        if (done) { clearInterval(it); return; }
+        if (available() || elapsed >= DC_DUID_WAIT_MAX_MS) {
+          clearInterval(it);
+          finish();
+        }
+      } catch(e) {
+        clearInterval(it);
+        finish();
+      }
+    }, DC_DUID_WAIT_STEP_MS);
+  } catch(e) {
+    finish();
+  }
+}
+
+// Función principal: Disparo directo a DoubleClick con lógica de matching
+/* ============================================================
+ * ALCANCE DE LA POLITICA DE CONSENTIMIENTO DE GOOGLE (EEE/UK/CH)
+ *
+ * Google exige consentimiento afirmativo para el cookie matching de
+ * usuarios del EEE, Reino Unido y Suiza. En los sitios donde corre este
+ * script no hay CMP (window.__tcfapi no existe), asi que no hay forma de
+ * obtener ese consentimiento: para esos navegadores no se dispara.
+ *
+ * El pais lo resuelve por IP ams-user-sync, con la misma base DB-IP y la
+ * misma lista de paises que aplica el filtro de /user_sync. Se consulta una
+ * vez por sesion.
+ *
+ * Antes lo resolvia un Worker en render-ad-alternativo.servicesadmedia
+ * .workers.dev. El 26/10/2026 ar.puma.com lo bloqueo por CSP: su connect-src
+ * permite *.servicesadmedia.com pero no workers.dev, y como el bloqueo cuenta
+ * como error y GEO_BLOCK_ON_ERROR es true, el sitio dejo de matchear por
+ * completo. Servirlo desde nuestro dominio lo pone bajo el host que los
+ * sitios ya habilitan para cargar este mismo script.
+ *
+ * ESTO SOLO AFECTA AL PUENTE HACIA DOUBLECLICK. El tracking del sitio, el
+ * mecanismo de proteccion de atribucion propia y los hashes de contacto
+ * siguen funcionando igual en todos los casos.
+ * ============================================================ */
+var GEO_ENDPOINT = "https://amspixel.servicesadmedia.com/geo";
+var GEO_CACHE_KEY = "ams_geo_eea";
+// La primera consulta de la sesion paga DNS + TLS contra workers.dev: medido
+// en ~1.1s con fibra y por encima de 1.2s en algunas cargas, con lo que el
+// timeout anterior (1200ms) bloqueaba la sesion entera. La consulta arranca
+// al cargar el script (ver prefetch abajo), asi que el margen casi nunca se
+// consume completo.
+var GEO_TIMEOUT_MS = 3000;
+// Ante un error o una demora no se dispara: preferimos perder un matcheo
+// antes que hacerlo sin poder determinar la ubicacion.
+var GEO_BLOCK_ON_ERROR = true;
+
+var geoState = { value: null, pending: null };
+
+// cb(inScope, resolved). resolved=false significa que no se pudo determinar
+// la ubicacion (timeout o error): ese resultado bloquea solo a los eventos
+// que estaban esperando y NO se cachea, el proximo evento vuelve a consultar.
+function resolveGeoScope(cb){
+  // 1) Ya resuelto en esta carga de pagina.
+  if (geoState.value !== null) { cb(geoState.value, true); return; }
+
+  // 2) Resuelto antes en esta sesion.
+  try {
+    var cached = sessionStorage.getItem(GEO_CACHE_KEY);
+    if (cached === "1" || cached === "0") {
+      geoState.value = (cached === "1");
+      cb(geoState.value, true);
+      return;
+    }
+  } catch(_){}
+
+  // 3) Varios eventos pueden pedirlo a la vez: una sola consulta.
+  if (geoState.pending) { geoState.pending.push(cb); return; }
+  geoState.pending = [cb];
+
+  function store(inScope){
+    geoState.value = inScope;
+    try { sessionStorage.setItem(GEO_CACHE_KEY, inScope ? "1" : "0"); } catch(_){}
+  }
+
+  function settle(inScope, resolved){
+    if (resolved) store(inScope);
+    var waiting = geoState.pending || [];
+    geoState.pending = null;
+    for (var i = 0; i < waiting.length; i++) {
+      try { waiting[i](inScope, resolved); } catch(_){}
+    }
+  }
+
+  if (typeof fetch !== "function") { settle(GEO_BLOCK_ON_ERROR, false); return; }
+
+  var done = false;
+  var timer = setTimeout(function(){
+    if (!done) { done = true; settle(GEO_BLOCK_ON_ERROR, false); }
+  }, GEO_TIMEOUT_MS);
+
+  try {
+    fetch(GEO_ENDPOINT, { credentials: "omit", cache: "no-store" })
+      .then(function(r){ return r.json(); })
+      .then(function(data){
+        var inScope = !!(data && data.eea);
+        // Respuesta tardia: los eventos que esperaban ya se descartaron,
+        // pero el resultado sirve para los siguientes.
+        if (done) { store(inScope); return; }
+        done = true; clearTimeout(timer);
+        settle(inScope, true);
+      })
+      .catch(function(){
+        if (done) return;
+        done = true; clearTimeout(timer);
+        settle(GEO_BLOCK_ON_ERROR, false);
+      });
+  } catch(_){
+    if (!done) { done = true; clearTimeout(timer); settle(GEO_BLOCK_ON_ERROR, false); }
+  }
+}
+
+// Prefetch: la consulta sale al cargar el script, en paralelo con Snowplow y
+// el dataLayer, para que el primer evento no tenga que esperar el handshake.
+(function(){
+  try {
+    if (isAmsOptedOut()) return;
+    resolveGeoScope(function(){});
+  } catch(_){}
+})();
+
+function fireDoubleClickDirect(googleUrl){
+  // Punto unico de salida hacia DoubleClick: pageview, carrito e item_view
+  // (dataLayer y DOM) pasan todos por aca.
+  if (isAmsOptedOut()) {
+    try { sessionStorage.setItem("ams_bridge_status", "optout"); } catch(_){}
+    return;
+  }
+
+  resolveGeoScope(function(inScope, resolved){
+    if (inScope) {
+      try { sessionStorage.setItem("ams_bridge_status", resolved ? "gdpr_scope" : "geo_unresolved"); } catch(_){}
+      return;
+    }
+
+    waitForDomainUserIdThen(function(){
+      buildAndDispatchDoubleClick(googleUrl);
+    });
+  });
+}
+
+function buildAndDispatchDoubleClick(googleUrl){
+  try {
+    // Todo se lee al momento del disparo (no al momento del evento): despues
+    // de la espera pueden haber aparecido duid o ams_hm.
+    // email/phone hasheados NO viajan en la URL de DoubleClick.
+    var cidInfo = getCIDFromHM();
+    var cid = cidInfo.cid;
+    var cid_source = cidInfo.source;
+    var domain_userid = getSnowplowDomainUserId();
+
+    // Construir URL base
+    var url;
+    try {
+      url = new URL(googleUrl);
+    } catch(e) {
+      // URL inválida, guardar diagnóstico y salir
+      try { sessionStorage.setItem("ams_bridge_status", "bad_url"); } catch(_){}
+      return;
+    }
+    
+    // Sin google_hm: Google redirige a /user_sync con estos parametros y el
+    // google_gid, y ams-user-sync decide que valor alojar.
+    if (cid && !url.searchParams.get('cid')) {
+      url.searchParams.set('cid', cid);
+    }
+    if (cid_source && !url.searchParams.get('cid_source')) {
+      url.searchParams.set('cid_source', cid_source);
+    }
+    if (domain_userid && !url.searchParams.get('domain_userid')) {
+      url.searchParams.set('domain_userid', domain_userid);
+    }
+
+    var img = new Image();
+    img.referrerPolicy = "no-referrer-when-downgrade";
+    img.src = url.toString();
+
+    try { sessionStorage.setItem("ams_bridge_status", domain_userid ? "ok" : "no_domain_userid"); } catch(_){}
+  } catch(e) {
+    try { sessionStorage.setItem("ams_bridge_status", "error"); } catch(_){}
+  }
+}
+
+  function getHM(){
+    try {
+      var hm = sessionStorage.getItem("ams_hm");
+      if (hm) return hm;
+      var raw = localStorage.getItem("ams_hm");
+      if (raw){
+        try { var p = JSON.parse(raw); if (p && p.v) return p.v; } catch(_){}
+      }
+    } catch(_){}
+    return null;
+  }
+
+  // --- Setup interceptación de dataLayer (ANTES de cualquier evento) ---
+  (function setupDataLayerTracking(){
+    try {
+      window.dataLayer = window.dataLayer || [];
+      var originalPush = window.dataLayer.push;
+      
+      window.dataLayer.push = function(){
+        var result = originalPush.apply(window.dataLayer, arguments);
+        try {
+          for (var i = 0; i < arguments.length; i++) {
+            var obj = arguments[i];
+            if (obj && typeof obj === 'object' && obj.event) {
+              var evt = obj.event;
+              
+              // Capturar eventos de carrito e item_id
+              if (evt === 'add_to_cart') {
+                sessionStorage.setItem('ams_last_cart_event', 'add_to_cart');
+                sessionStorage.setItem('ams_last_cart_event_ts', Date.now().toString());
+                
+                // Capturar item_id: ecommerce.items[0].item_id
+                try {
+                  if (obj.ecommerce && obj.ecommerce.items && Array.isArray(obj.ecommerce.items) && obj.ecommerce.items.length > 0) {
+                    var itemId = obj.ecommerce.items[0].item_id;
+                    if (itemId) {
+                      sessionStorage.setItem('ams_last_item_id', String(itemId));
+                    }
+                  }
+                } catch(e){}
+              } else if (evt === 'transaction' || evt === 'purchase') {
+                // Evento de transacción completada
+                sessionStorage.setItem('ams_last_cart_event', 'transaction');
+                sessionStorage.setItem('ams_last_cart_event_ts', Date.now().toString());
+              } else if (evt === 'addToCart') {
+                // Formato legacy: ecommerce.add.products[0].id
+                sessionStorage.setItem('ams_last_cart_event', 'add_to_cart');
+                sessionStorage.setItem('ams_last_cart_event_ts', Date.now().toString());
+                
+                try {
+                  if (obj.ecommerce && obj.ecommerce.add && obj.ecommerce.add.products && Array.isArray(obj.ecommerce.add.products) && obj.ecommerce.add.products.length > 0) {
+                    var itemId = obj.ecommerce.add.products[0].id;
+                    if (itemId) {
+                      sessionStorage.setItem('ams_last_item_id', String(itemId));
+                    }
+                  }
+                } catch(e){}
+              } else if (evt === 'view_cart' || evt === 'cart') {
+                sessionStorage.setItem('ams_last_cart_event', 'cart');
+                sessionStorage.setItem('ams_last_cart_event_ts', Date.now().toString());
+                
+                // Capturar último item_id: ecommerce.items[último].item_id
+                try {
+                  if (obj.ecommerce && obj.ecommerce.items && Array.isArray(obj.ecommerce.items) && obj.ecommerce.items.length > 0) {
+                    var lastItem = obj.ecommerce.items[obj.ecommerce.items.length - 1];
+                    if (lastItem && lastItem.item_id) {
+                      sessionStorage.setItem('ams_last_item_id', String(lastItem.item_id));
+                    }
+                  }
+                } catch(e){}
+              }
+              
+              // --- CAPTURA DE EVENTOS PRODUCT VIEW ---
+              // Detectar variantes comunes de eventos product view y disparar inmediatamente
+              var normalizedEvent = normalizeRealtimeAudienceEvent(evt);
+              if (normalizedEvent === 'item_view') {
+                // Extraer product_id del evento
+                var productId = extractProductId(obj);
+                
+                // IMPORTANTE: Solo disparar si tenemos productId
+                if (productId) {
+                  // Marcar que el dataLayer YA resolvió item_view para esta URL.
+                  // Esto evita que el fallback DOM/metadata (que puede confundir
+                  // variant_id con item_id en sitios como Portsaid) dispare una
+                  // señal distinta/incorrecta para el mismo pageview.
+                  markDataLayerItemViewResolved();
+                  fireRealtimeAudienceEvent('item_view', productId);
+                }
+              }
+            }
+          }
+        } catch(e){}
+        return result;
+      };
+      
+      // Procesar eventos ya existentes en dataLayer
+      if (window.dataLayer.length > 0) {
+        for (var j = 0; j < window.dataLayer.length; j++) {
+          var existing = window.dataLayer[j];
+          if (existing && typeof existing === 'object' && existing.event) {
+            var evt = existing.event;
+            
+            // Eventos de carrito e item_id
+            if (evt === 'add_to_cart') {
+              sessionStorage.setItem('ams_last_cart_event', 'add_to_cart');
+              sessionStorage.setItem('ams_last_cart_event_ts', Date.now().toString());
+              
+              // Capturar item_id
+              try {
+                if (existing.ecommerce && existing.ecommerce.items && Array.isArray(existing.ecommerce.items) && existing.ecommerce.items.length > 0) {
+                  var itemId = existing.ecommerce.items[0].item_id;
+                  if (itemId) {
+                    sessionStorage.setItem('ams_last_item_id', String(itemId));
+                  }
+                }
+              } catch(e){}
+            } else if (evt === 'addToCart') {
+              // Formato legacy
+              sessionStorage.setItem('ams_last_cart_event', 'add_to_cart');
+              sessionStorage.setItem('ams_last_cart_event_ts', Date.now().toString());
+              
+              try {
+                if (existing.ecommerce && existing.ecommerce.add && existing.ecommerce.add.products && Array.isArray(existing.ecommerce.add.products) && existing.ecommerce.add.products.length > 0) {
+                  var itemId = existing.ecommerce.add.products[0].id;
+                  if (itemId) {
+                    sessionStorage.setItem('ams_last_item_id', String(itemId));
+                  }
+                }
+              } catch(e){}
+            } else if (evt === 'transaction' || evt === 'purchase') {
+              // Evento de transacción completada
+              sessionStorage.setItem('ams_last_cart_event', 'transaction');
+              sessionStorage.setItem('ams_last_cart_event_ts', Date.now().toString());
+            } else if (evt === 'view_cart' || evt === 'cart') {
+              sessionStorage.setItem('ams_last_cart_event', 'cart');
+              sessionStorage.setItem('ams_last_cart_event_ts', Date.now().toString());
+              
+              // Capturar último item_id
+              try {
+                if (existing.ecommerce && existing.ecommerce.items && Array.isArray(existing.ecommerce.items) && existing.ecommerce.items.length > 0) {
+                  var lastItem = existing.ecommerce.items[existing.ecommerce.items.length - 1];
+                  if (lastItem && lastItem.item_id) {
+                    sessionStorage.setItem('ams_last_item_id', String(lastItem.item_id));
+                  }
+                }
+              } catch(e){}
+            }
+            
+            // Procesar product views también en eventos preexistentes
+            var normalizedExisting = normalizeRealtimeAudienceEvent(evt);
+            if (normalizedExisting === 'item_view') {
+              var productId = extractProductId(existing);
+              // IMPORTANTE: Solo disparar si tenemos productId
+              if (productId) {
+                // Ver comentario equivalente arriba: evita que el fallback DOM
+                // pise este item_view correcto con un variant_id.
+                markDataLayerItemViewResolved();
+                fireRealtimeAudienceEvent('item_view', productId);
+              }
+            }
+          }
+        }
+      }
+    } catch(e){}
+  })();
+
+  // --- Función para detectar eventos de carrito ---
+  function getCartEvent(){
+    try {
+      // 1. Detectar por URL completa (pathname + hash)
+      var fullUrl = (window.location.pathname + window.location.hash).toLowerCase();
+      // Segmento completo de la URL, no texto suelto: indexOf('/cart') marcaba
+      // como carrito las categorias de prune (/carteras-aw/...), sarkany
+      // (/cartera-...), viamo, desiderata y coppelar. En prune el 96,7% de los
+      // ev=cart eran falsos y llenaban rt_hot_cart (medido el 12/10/2026).
+      if (/(^|[\/#])(cart|carrito|micarrito)([\/?#.]|$)/.test(fullUrl)) {
+        return 'cart';
+      }
+      if (fullUrl.indexOf('/checkout') !== -1 || fullUrl.indexOf('checkout') !== -1) {
+        return 'cart';
+      }
+
+      // 2. Detectar evento reciente de dataLayer (últimos 2 minutos)
+      try {
+        var ev = sessionStorage.getItem('ams_last_cart_event');
+        var ts = sessionStorage.getItem('ams_last_cart_event_ts');
+        if (ev && ts) {
+          var age = Date.now() - parseInt(ts, 10);
+          if (age < 2 * 60 * 1000) { // 2 minutos
+            return ev;
+          }
+        }
+      } catch(e){}
+    } catch(e){}
+    return null;
+  }
+
+  // --- Función para obtener item_id capturado ---
+  function getItemId(){
+    try {
+      var itemId = sessionStorage.getItem('ams_last_item_id');
+      if (itemId && itemId !== 'null' && itemId !== 'undefined' && itemId !== '') {
+        return itemId;
+      }
+    } catch(e){}
+    return null;
+  }
+
+  // --- Coordinación dataLayer vs fallback DOM/metadata para item_view ---
+  // Problema real detectado (Portsaid): el dataLayer expone item_id correcto
+  // (ecommerce.items[0].item_id), pero el fallback DOM puede resolver un SKU
+  // de variante (JSON-LD Product.sku, idsku=, etc.) para la misma URL y
+  // terminar emitiendo una señal item_view con el valor incorrecto. El dedupe
+  // por eventType+itemId NO evita esto porque son itemId distintos.
+  // Solución: si el dataLayer ya resolvió item_view para la URL actual, el
+  // fallback DOM se abstiene de correr para esa misma URL.
+  var AMS_DL_ITEM_VIEW_RESOLVED_KEY = 'ams_dl_item_view_resolved_url';
+
+  function currentUrlKeyForItemView() {
+    try {
+      return window.location.pathname + window.location.search;
+    } catch(e) {
+      return '';
+    }
+  }
+
+  function markDataLayerItemViewResolved() {
+    try {
+      sessionStorage.setItem(AMS_DL_ITEM_VIEW_RESOLVED_KEY, currentUrlKeyForItemView());
+    } catch(e) {}
+  }
+
+  function wasDataLayerItemViewResolvedForCurrentUrl() {
+    try {
+      var marked = sessionStorage.getItem(AMS_DL_ITEM_VIEW_RESOLVED_KEY);
+      return !!marked && marked === currentUrlKeyForItemView();
+    } catch(e) {
+      return false;
+    }
+  }
+
+  // ============================================
+  // REALTIME AUDIENCE: PRODUCT VIEW SUPPORT
+  // ============================================
+  
+  // Normalizar eventos de audiencia realtime a nombres canónicos
+  // Eventos de LISTADO / impresion: NUNCA son un item_view.
+  // Caso real (Wanama): la home pushea view_item_list con los 14 productos del
+  // carrusel. Eso no es "lo que el usuario miro"; si entra como item_view, la
+  // reco caliente se arma con el primer item de la grilla en vez del producto
+  // que realmente abrio. Se declaran explicitos para que ningun alias nuevo se
+  // cuele por parecido de nombre.
+  var REALTIME_AUDIENCE_LIST_EVENTS = [
+    'view_item_list', 'viewitemlist',
+    'select_item', 'selectitem', 'product_click', 'productclick',
+    'view_promotion', 'viewpromotion', 'select_promotion', 'selectpromotion',
+    'view_search_results', 'viewsearchresults',
+    'productimpression', 'productimpressions', 'impression', 'impressions',
+    'select_content', 'selectcontent', 'view_category', 'viewcategory'
+  ];
+
+  function isRealtimeAudienceListEvent(evt) {
+    if (!evt) return false;
+    return REALTIME_AUDIENCE_LIST_EVENTS.indexOf(String(evt).trim().toLowerCase()) !== -1;
+  }
+
+  function normalizeRealtimeAudienceEvent(evt) {
+    if (!evt) return null;
+    var normalized = String(evt).trim().toLowerCase();
+
+    // Listados primero: la grilla de la home o de una categoria no genera
+    // senal de audiencia caliente.
+    if (isRealtimeAudienceListEvent(normalized)) return null;
+    
+    // Cart events → cart o add_to_cart (mantener comportamiento actual)
+    if (normalized === 'cart' || normalized === 'view_cart') return 'cart';
+    if (normalized === 'add_to_cart' || normalized === 'addtocart') return 'add_to_cart';
+    
+    // Product view events → item_view
+    if (normalized === 'item_view' || normalized === 'itemview') return 'item_view';
+    if (normalized === 'view_item' || normalized === 'viewitem') return 'item_view';
+    if (normalized === 'product_view' || normalized === 'productview') return 'item_view';
+    if (normalized === 'view_product' || normalized === 'viewproduct') return 'item_view';
+    if (normalized === 'productdetail') return 'item_view';
+    
+    return null;
+  }
+  
+  // Extraer product_id de estructuras ecommerce comunes
+  function extractProductId(obj) {
+    if (!obj) return null;
+    
+    try {
+      // 1. ecommerce.items[0].item_id (GA4 estándar)
+      if (obj.ecommerce && obj.ecommerce.items && Array.isArray(obj.ecommerce.items) && obj.ecommerce.items.length > 0) {
+        // Un view_item real trae UN item. Si vienen varios es una grilla
+        // (view_item_list y familia, o un push con nombre propio del cliente):
+        // no existe "el producto que miro", asi que no se resuelve ningun id.
+        // Esta defensa es independiente del nombre del evento.
+        if (obj.ecommerce.items.length > 1) return null;
+        if (obj.ecommerce.items[0].item_id) return String(obj.ecommerce.items[0].item_id);
+        // 2. ecommerce.items[0].id (alternativa)
+        if (obj.ecommerce.items[0].id) return String(obj.ecommerce.items[0].id);
+        // 3. ecommerce.items[0].sku (alternativa)
+        if (obj.ecommerce.items[0].sku) return String(obj.ecommerce.items[0].sku);
+      }
+      
+      // 4. ecommerce.detail.products[0].id (legacy)
+      if (obj.ecommerce && obj.ecommerce.detail && obj.ecommerce.detail.products && 
+          Array.isArray(obj.ecommerce.detail.products) && obj.ecommerce.detail.products.length > 0) {
+        if (obj.ecommerce.detail.products[0].id) return String(obj.ecommerce.detail.products[0].id);
+      }
+      
+      // 5. ecommerce.add.products[0].id (legacy add_to_cart)
+      if (obj.ecommerce && obj.ecommerce.add && obj.ecommerce.add.products && 
+          Array.isArray(obj.ecommerce.add.products) && obj.ecommerce.add.products.length > 0) {
+        if (obj.ecommerce.add.products[0].id) return String(obj.ecommerce.add.products[0].id);
+      }
+    } catch(e) {}
+    
+    return null;
+  }
+  
+  // ============================================
+  // DOM/METADATA FALLBACK PARA PRODUCT VIEW
+  // ============================================
+  
+  // Extraer product_id desde DOM/metadata (fallback cuando no hay dataLayer)
+  function getProductIdFromPage() {
+    try {
+      // 1. JSON-LD Product (más confiable)
+      try {
+        var scripts = document.querySelectorAll('script[type="application/ld+json"]');
+        for (var i = 0; i < scripts.length; i++) {
+          try {
+            var data = JSON.parse(scripts[i].textContent || scripts[i].innerText);
+            
+            // Manejar estructura directa
+            if (data && data['@type'] === 'Product') {
+              if (data.sku) return String(data.sku).trim();
+              if (data.productID) return String(data.productID).trim();
+              if (data.mpn) return String(data.mpn).trim();
+            }
+            
+            // Manejar arrays
+            if (Array.isArray(data)) {
+              for (var j = 0; j < data.length; j++) {
+                if (data[j] && data[j]['@type'] === 'Product') {
+                  if (data[j].sku) return String(data[j].sku).trim();
+                  if (data[j].productID) return String(data[j].productID).trim();
+                  if (data[j].mpn) return String(data[j].mpn).trim();
+                }
+              }
+            }
+            
+            // Manejar @graph
+            if (data && data['@graph'] && Array.isArray(data['@graph'])) {
+              for (var k = 0; k < data['@graph'].length; k++) {
+                if (data['@graph'][k] && data['@graph'][k]['@type'] === 'Product') {
+                  if (data['@graph'][k].sku) return String(data['@graph'][k].sku).trim();
+                  if (data['@graph'][k].productID) return String(data['@graph'][k].productID).trim();
+                  if (data['@graph'][k].mpn) return String(data['@graph'][k].mpn).trim();
+                }
+              }
+            }
+          } catch(e) {}
+        }
+      } catch(e) {}
+      
+      // 2. Formulario principal PDP con data-product-sku (PRIORIDAD ALTA)
+      try {
+        var productForm = document.querySelector('form[data-product-sku], form#product_addtocart_form[data-product-sku]');
+        if (productForm) {
+          var sku = productForm.getAttribute('data-product-sku');
+          if (sku) {
+            var trimmed = String(sku).trim();
+            if (trimmed) return trimmed;
+          }
+        }
+      } catch(e) {}
+      
+      // 3. SKU dentro del CONTENEDOR PRINCIPAL del producto (SCOPED)
+      try {
+        var mainContainers = [
+          '.product-info-main',
+          '.product-info-container',
+          '.product-detail',
+          '.product-page',
+          'main'
+        ];
+        
+        for (var c = 0; c < mainContainers.length; c++) {
+          var container = document.querySelector(mainContainers[c]);
+          if (container) {
+            // Buscar itemprop="sku" dentro del contenedor
+            var skuElem = container.querySelector('[itemprop="sku"]');
+            if (skuElem) {
+              var text = (skuElem.textContent || skuElem.innerText || '').trim();
+              if (text) return text;
+            }
+            
+            // Buscar selectores específicos de SKU dentro del contenedor
+            var skuSelectors = [
+              '.product.attribute.sku .value',
+              '.product-info-stock-sku .sku',
+              '.product-info-stock-sku .value',
+              '[data-role="product-sku"]'
+            ];
+            
+            for (var s = 0; s < skuSelectors.length; s++) {
+              var elem = container.querySelector(skuSelectors[s]);
+              if (elem) {
+                var text = (elem.textContent || elem.innerText || '').trim();
+                if (text) return text;
+              }
+            }
+          }
+        }
+      } catch(e) {}
+      
+      // 4. Meta tags de producto
+      try {
+        var metaSelectors = [
+          'meta[property="product:sku"]',
+          'meta[property="product:retailer_item_id"]',
+          'meta[property="product:id"]',
+          'meta[name="product_id"]',
+          'meta[name="sku"]'
+        ];
+        
+        for (var m = 0; m < metaSelectors.length; m++) {
+          var meta = document.querySelector(metaSelectors[m]);
+          if (meta && meta.content) {
+            var val = String(meta.content).trim();
+            if (val) return val;
+          }
+        }
+      } catch(e) {}
+      
+      // 5. Selectores DOM genéricos conocidos (GLOBAL, como último recurso)
+      try {
+        var globalSelectors = [
+          '.product.attribute.sku .value',
+          '.product-info-stock-sku .sku',
+          '.product-info-stock-sku .value',
+          '[data-role="product-sku"]'
+        ];
+        
+        for (var g = 0; g < globalSelectors.length; g++) {
+          var elem = document.querySelector(globalSelectors[g]);
+          if (elem) {
+            var text = (elem.textContent || elem.innerText || '').trim();
+            if (text) return text;
+          }
+        }
+      } catch(e) {}
+      
+      // 6. data-sku dentro del contenedor principal (SCOPED)
+      try {
+        var mainContainers = [
+          '.product-info-main',
+          '.product-info-container',
+          '.product-detail',
+          'main'
+        ];
+        
+        for (var c = 0; c < mainContainers.length; c++) {
+          var container = document.querySelector(mainContainers[c]);
+          if (container) {
+            var dataSkuElem = container.querySelector('[data-sku]');
+            if (dataSkuElem) {
+              var sku = dataSkuElem.getAttribute('data-sku');
+              if (sku) {
+                var trimmed = String(sku).trim();
+                if (trimmed) return trimmed;
+              }
+            }
+          }
+        }
+      } catch(e) {}
+      
+      // 7. itemprop="sku" global (último recurso sin scope)
+      try {
+        var skuElem = document.querySelector('[itemprop="sku"]');
+        if (skuElem) {
+          var text = (skuElem.textContent || skuElem.innerText || '').trim();
+          if (text) return text;
+        }
+      } catch(e) {}
+      
+      // 8. data-product-id / data-item-id (ÚLTIMO RECURSO)
+      // Solo si no encontramos nada más y estamos seguros que es PDP
+      try {
+        var dataSelectors = [
+          '[data-item-id]',
+          '[data-product-id]'
+        ];
+        
+        for (var d = 0; d < dataSelectors.length; d++) {
+          var el = document.querySelector(dataSelectors[d]);
+          if (el) {
+            var attr = el.getAttribute(dataSelectors[d].slice(1, -1));
+            if (attr) {
+              var trimmed = String(attr).trim();
+              if (trimmed) return trimmed;
+            }
+          }
+        }
+      } catch(e) {}
+      
+    } catch(e) {}
+    
+    return null;
+  }
+  
+  // Paginas donde no existe "el producto que miro": la home y las grillas de
+  // listado. El fallback DOM resolvia el SKU de la primera card (carrusel de
+  // la home, resultados de busqueda) y lo emitia como item_view, que es lo que
+  // ensuciaba la audiencia caliente.
+  function looksLikeNonProductPage() {
+    try {
+      // 1. Home: nunca es un PDP.
+      try {
+        var path = String(window.location.pathname || '').toLowerCase();
+        while (path.length > 1 && path.charAt(path.length - 1) === '/') {
+          path = path.slice(0, -1);
+        }
+        if (path === '' || path === '/' || path === '/index' || path === '/index.html' || path === '/home') {
+          return true;
+        }
+      } catch(e) {}
+
+      // 2. Mas de un Product en JSON-LD = grilla, no ficha.
+      try {
+        var productCount = 0;
+        var ldScripts = document.querySelectorAll('script[type="application/ld+json"]');
+        for (var i = 0; i < ldScripts.length && productCount < 2; i++) {
+          try {
+            var data = JSON.parse(ldScripts[i].textContent || ldScripts[i].innerText);
+            var nodes = [];
+            if (Array.isArray(data)) nodes = data;
+            else if (data && Array.isArray(data['@graph'])) nodes = data['@graph'];
+            else if (data) nodes = [data];
+            for (var j = 0; j < nodes.length; j++) {
+              if (nodes[j] && nodes[j]['@type'] === 'Product') productCount++;
+            }
+          } catch(e) {}
+        }
+        if (productCount > 1) return true;
+      } catch(e) {}
+
+      // 3. Varios formularios de producto = grilla con quick-add.
+      try {
+        var quickAddForms = document.querySelectorAll('form[data-product-sku]');
+        if (quickAddForms && quickAddForms.length > 1) return true;
+      } catch(e) {}
+
+    } catch(e) {}
+
+    return false;
+  }
+
+  // Detectar si estamos en una Product Detail Page
+  function isProductDetailPage() {
+    try {
+      // Descarte previo: home y grillas de listado no son PDP por mas que
+      // tengan markup de producto en las cards.
+      if (looksLikeNonProductPage()) return false;
+
+      // A. body con schema.org/Product (señal muy fuerte)
+      try {
+        var body = document.body || document.querySelector('body');
+        if (body) {
+          var itemtype = body.getAttribute('itemtype');
+          var itemscope = body.getAttribute('itemscope');
+          if (itemtype && itemscope !== null) {
+            if (itemtype.indexOf('schema.org/Product') !== -1) {
+              return true;
+            }
+          }
+        }
+      } catch(e) {}
+      
+      // B. JSON-LD con @type Product
+      try {
+        var scripts = document.querySelectorAll('script[type="application/ld+json"]');
+        for (var i = 0; i < scripts.length; i++) {
+          try {
+            var data = JSON.parse(scripts[i].textContent || scripts[i].innerText);
+            
+            if (data && data['@type'] === 'Product') return true;
+            
+            if (Array.isArray(data)) {
+              for (var j = 0; j < data.length; j++) {
+                if (data[j] && data[j]['@type'] === 'Product') return true;
+              }
+            }
+            
+            if (data && data['@graph'] && Array.isArray(data['@graph'])) {
+              for (var k = 0; k < data['@graph'].length; k++) {
+                if (data['@graph'][k] && data['@graph'][k]['@type'] === 'Product') return true;
+              }
+            }
+          } catch(e) {}
+        }
+      } catch(e) {}
+      
+      // C. Meta og:type product
+      try {
+        var ogType = document.querySelector('meta[property="og:type"]');
+        if (ogType && ogType.content) {
+          var type = String(ogType.content).toLowerCase().trim();
+          if (type.indexOf('product') !== -1) return true;
+        }
+      } catch(e) {}
+      
+      // D. Formulario principal de producto con data-product-sku
+      try {
+        var productForms = [
+          'form[data-product-sku]',
+          'form#product_addtocart_form',
+          'form.product-add-form'
+        ];
+        
+        for (var f = 0; f < productForms.length; f++) {
+          if (document.querySelector(productForms[f])) {
+            return true;
+          }
+        }
+      } catch(e) {}
+      
+      // E. Combinación: .product-info-main + [itemprop="sku"]
+      try {
+        var productInfoMain = document.querySelector('.product-info-main, .product-info-container, .product-detail');
+        if (productInfoMain) {
+          var sku = productInfoMain.querySelector('[itemprop="sku"]');
+          if (sku) return true;
+        }
+      } catch(e) {}
+      
+      // F. Magento: body.catalog-product-view
+      try {
+        var body = document.body || document.querySelector('body');
+        if (body && body.className) {
+          if (body.className.indexOf('catalog-product-view') !== -1) {
+            return true;
+          }
+        }
+      } catch(e) {}
+      
+    } catch(e) {}
+    
+    return false;
+  }
+  
+  // Intentar emitir product view desde DOM (fallback)
+  function tryEmitDomProductView() {
+    try {
+      // 1. Verificar si es PDP
+      if (!isProductDetailPage()) {
+        return false;
+      }
+      
+      // 2. Obtener product ID
+      var itemId = getProductIdFromPage();
+      if (!itemId) {
+        return false;
+      }
+      
+      // 3. Emitir usando la misma función que dataLayer
+      // Esto reutiliza el dedupe existente automáticamente
+      fireRealtimeAudienceEvent('item_view', itemId);
+      
+      return true;
+    } catch(e) {
+      return false;
+    }
+  }
+  
+  // Disparar evento de audiencia realtime a DoubleClick
+  function fireRealtimeAudienceEvent(eventType, itemId) {
+    if (!eventType) return;
+    
+    // DEFENSA: item_view requiere itemId obligatoriamente
+    if (eventType === 'item_view' && !itemId) {
+      return;
+    }
+    
+    try {
+      // Generar clave de dedupe
+      var dedupeKey = 'ams_rt_event:' + eventType + ':' + (itemId || 'none');
+      
+      // Dedupe window específico por tipo de evento
+      // item_view: 30 segundos (para evitar duplicados DOM + dataLayer)
+      // otros eventos: 2 segundos
+      var dedupeWindow = eventType === 'item_view' ? 30000 : 2000;
+      
+      // Verificar si ya se disparó este evento recientemente
+      try {
+        var lastFired = sessionStorage.getItem(dedupeKey);
+        if (lastFired) {
+          var age = Date.now() - parseInt(lastFired, 10);
+          if (age < dedupeWindow) {
+            return; // Skip: evento duplicado
+          }
+        }
+      } catch(e) {}
+      
+      // Construir URL base para DoubleClick
+      var googleUrl = "https://cm.g.doubleclick.net/pixel?google_nid=admedia_3&google_ula=9387358431&google_cm";
+      
+      // Agregar evento normalizado
+      googleUrl += "&ev=" + encodeURIComponent(eventType);
+      
+      // Agregar item_id si existe
+      if (itemId) {
+        googleUrl += "&iid=" + encodeURIComponent(itemId);
+      }
+
+      // Disparar usando la función existente que enriquece con cid, domain_userid, etc.
+      fireDoubleClickDirect(googleUrl);
+      
+      // Marcar como disparado para evitar duplicados
+      try {
+        sessionStorage.setItem(dedupeKey, String(Date.now()));
+      } catch(e) {}
+      
+    } catch(e) {}
+  }
+
+  // --- Lógica de disparo ----
+  // OPTIMIZACIÓN D: DISPARAR INMEDIATAMENTE (sin esperar DOMContentLoaded)
+  // El matching no requiere DOM, por lo que ejecutamos inline apenas carga el script
+  try {
+    function fire(){
+      var googleUrl = "https://cm.g.doubleclick.net/pixel?google_nid=admedia_3&google_ula=9387358431&google_cm";
+      
+      // Agregar evento de carrito si existe
+      var cartEvent = getCartEvent();
+      if (cartEvent) {
+        googleUrl += "&ev=" + encodeURIComponent(cartEvent);
+      }
+      
+      // Agregar item_id si está disponible
+      var itemId = getItemId();
+      if (itemId) {
+        googleUrl += "&iid=" + encodeURIComponent(itemId);
+      }
+
+      // Matcheo de una pagina SIN evento: una vez cada 24 h por navegador y
+      // sitio (localStorage es del dominio del cliente, asi que queda por app).
+      // Cada usuario repetia el matcheo ~8,7 veces por dia y Google necesita
+      // uno (medido el 12/10/2026). Las paginas CON evento (ev/iid) salen
+      // siempre: por este pedido viajan los eventos que arman rt_hot_cart y
+      // rt_hot_itemview en user-sync. Si localStorage no esta, se dispara.
+      if (!cartEvent && !itemId) {
+        try {
+          var lastCm = parseInt(localStorage.getItem('ams_cm_last_ts') || '0', 10);
+          if (lastCm && (Date.now() - lastCm) < 24 * 60 * 60 * 1000) {
+            return;
+          }
+          localStorage.setItem('ams_cm_last_ts', String(Date.now()));
+        } catch(e) {}
+      }
+
+      // ⚠️ MODIFICADO: Disparo directo sin iframe (bridge deprecado)
+      // La lógica que antes estaba en pixel_CM_bridge.html ahora se ejecuta aquí
+      fireDoubleClickDirect(googleUrl);
+      
+      // NOTA: Se eliminó el disparo redundante con new Image() que existía antes.
+      // Ya no es necesario porque fireDoubleClickDirect() maneja todos los fallbacks internamente:
+      // - Si no hay domain_userid → dispara sin domain_userid
+      // - Siempre dispara el pixel con los mejores parámetros disponibles
+    }
+
+    
+    function scheduleDoubleClickFire(){
+      try {
+        var run = function(){
+          try {
+            if ('requestIdleCallback' in window) {
+              window.requestIdleCallback(function(){
+                fire();
+              }, { timeout: 3000 });
+            } else {
+              setTimeout(function(){
+                fire();
+              }, 0);
+            }
+          } catch(e) {
+            try { fire(); } catch(_) {}
+          }
+        };
+      
+        if (document.readyState === 'complete') {
+          run();
+        } else {
+          window.addEventListener('load', run, { once: true });
+        }
+      } catch(e) {
+        try {
+          setTimeout(function(){ fire(); }, 0);
+        } catch(_) {}
+      }
+    }
+    scheduleDoubleClickFire();
+  } catch(e){ /* no-op */ }
+
+  // ============================================
+  // DOM FALLBACK RETRY LOGIC
+  // ============================================
+  // Sistema de retries limitados para detectar product views vía DOM/metadata
+  // cuando no hay eventos en dataLayer (fallback para SPAs y páginas sin dataLayer)
+  
+  (function setupDomProductViewDetection(){
+    try {
+      // Guard de doble instalacion: pixel.js puede ejecutarse mas de una vez
+      // en la misma pagina (ver el guard __UTM_CONTEXT_REGISTERED__).
+      if (window.__AMS_DOM_PDP_DETECTION__) return;
+      window.__AMS_DOM_PDP_DETECTION__ = true;
+
+      // Antes era un booleano global: detectado un PDP, no se volvia a
+      // detectar otro en una SPA sin dataLayer. Ahora la marca es por URL,
+      // asi que PDP A -> PDP B emite los dos.
+      var detectedForUrl = null;
+      var timers = [];
+
+      var RETRY_DELAYS = [500, 1500, 3000];
+
+      function currentUrlKey() {
+        try {
+          return window.location.pathname + window.location.search;
+        } catch(e) {
+          return '';
+        }
+      }
+
+      function attempt() {
+        try {
+          var key = currentUrlKey();
+          if (detectedForUrl === key) return;
+
+          // Si el dataLayer YA resolvió item_view (con el item_id correcto)
+          // para esta URL, no corremos el fallback DOM/metadata. Esto evita
+          // que el fallback capture un variant_id/SKU (ej: JSON-LD Product.sku,
+          // idsku= en la URL) y lo confunda con el item_id del catálogo,
+          // rompiendo el matching de recomendaciones (caso Portsaid).
+          if (wasDataLayerItemViewResolvedForCurrentUrl()) {
+            detectedForUrl = key;
+            return;
+          }
+
+          // El dedupe por eventType + itemId de fireRealtimeAudienceEvent()
+          // sigue siendo el que evita duplicar cuando el dataLayer tambien
+          // dispara view_item para el mismo producto.
+          if (tryEmitDomProductView()) {
+            detectedForUrl = key;
+          }
+        } catch(e) {}
+      }
+
+      function clearTimers() {
+        for (var i = 0; i < timers.length; i++) {
+          try { clearTimeout(timers[i]); } catch(e) {}
+        }
+        timers = [];
+      }
+
+      // Ventana de reintentos ACOTADA: el DOM del PDP nuevo puede tardar en
+      // montarse tras una navegacion SPA. No hay MutationObserver global ni
+      // polling permanente: la ventana se cierra a los 3s y solo se reabre
+      // ante un cambio real de URL.
+      function scheduleAttempts() {
+        clearTimers();
+        attempt();
+
+        for (var i = 0; i < RETRY_DELAYS.length; i++) {
+          timers.push(setTimeout(attempt, RETRY_DELAYS[i]));
+        }
+      }
+
+      function onSpaNavigation() {
+        try {
+          // pushState/replaceState ya aplicaron el cambio de URL cuando esto
+          // corre, asi que currentUrlKey() es la URL nueva.
+          if (detectedForUrl === currentUrlKey()) return;
+          scheduleAttempts();
+        } catch(e) {}
+      }
+
+      // Intento inmediato + DOMContentLoaded + retries (comportamiento previo)
+      scheduleAttempts();
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', attempt, { once: true });
+      }
+
+      // Hooks de navegacion SPA. Se encadenan sobre lo que ya haya instalado
+      // storage.js en vez de reemplazarlo.
+      try {
+        var originalPushState = window.history.pushState;
+        var originalReplaceState = window.history.replaceState;
+
+        window.history.pushState = function() {
+          var result = originalPushState.apply(window.history, arguments);
+          onSpaNavigation();
+          return result;
+        };
+
+        window.history.replaceState = function() {
+          var result = originalReplaceState.apply(window.history, arguments);
+          onSpaNavigation();
+          return result;
+        };
+
+        window.addEventListener('popstate', onSpaNavigation);
+      } catch(e) {}
+
+    } catch(e) {}
+  })();
+
+
+// ============================================
+// SISTEMA DE BACKUP PARA DOMAIN_USERID DE SNOWPLOW
+// ============================================
+// Problema: En algunos dominios Snowplow no logra persistir la cookie _sp_id.*
+// Solución: Capturar y persistir el domain_userid que Snowplow genera como backup
+
+var SP_DUID_BACKUP_KEY = 'ams_sp_duid';
+var SP_DUID_EXP_MS = 730 * 24 * 60 * 60 * 1000; // 2 años (igual que Snowplow)
+
+// Valores que NUNCA pueden ser un domain_userid. getDomainUserInfo() usa el
+// primer campo como flag 0/1, asi que historicamente pudimos escribir cookies
+// tanto "0.uuid.ts..." como "1.uuid.ts...". Si el parseo devuelve el flag,
+// terminamos persistiendo ams_sp_duid = "0" y contaminando identity/matching.
+var SP_DUID_SENTINELS = ['0', '1', 'null', 'undefined', 'NaN', 'false', 'true'];
+
+// UUID estricto: se usa para DESAMBIGUAR el formato de la cookie y para
+// localizar el domain_userid dentro de getDomainUserInfo().
+function looksLikeSnowplowUuid(value) {
+  if (!value || typeof value !== 'string') return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+    .test(value.trim());
+}
+
+// Validacion PERMISIVA para aceptar/persistir. No exige UUID a proposito: si
+// algun cliente tuviera un domain_userid con otro formato, rechazarlo nos
+// haria perder el matcheo de un usuario valido. Solo descarta lo que no
+// puede ser un identificador: sentinelas, vacio y numeros cortos sueltos.
+function isValidSnowplowDomainUserId(value) {
+  if (value === null || value === undefined) return false;
+  if (typeof value !== 'string') return false;
+
+  var trimmed = value.trim();
+  if (!trimmed) return false;
+
+  for (var i = 0; i < SP_DUID_SENTINELS.length; i++) {
+    if (trimmed === SP_DUID_SENTINELS[i]) return false;
+  }
+
+  if (looksLikeSnowplowUuid(trimmed)) return true;
+
+  // Un entero corto es un contador o un flag, no una identidad.
+  if (/^\d{1,9}$/.test(trimmed)) return false;
+
+  return trimmed.length >= 8;
+}
+
+// getDomainUserInfo() puede venir con o sin flag de version al frente:
+//   con flag: [flag, duid, first_ts, visit_count, now_ts, last_visit_ts,
+//              session_id, previous_session_id, ...]
+//   sin flag: [duid, first_ts, visit_count, now_ts, last_visit_ts,
+//              session_id, previous_session_id, ...]
+// Devuelve el indice del domain_userid, o -1. Se detecta por posicion real
+// del UUID en vez de asumir un indice fijo: asumirlo hacia que en un tracker
+// sin flag guardaramos previous_session_id como si fuera domain_sessionid.
+function getSnowplowDomainUserInfoOffset(info) {
+  try {
+    if (!info || !info.length) return -1;
+
+    if (looksLikeSnowplowUuid(info[0])) return 0;
+
+    if (
+      (String(info[0]) === '0' || String(info[0]) === '1') &&
+      looksLikeSnowplowUuid(info[1])
+    ) {
+      return 1;
+    }
+  } catch (e) {}
+
+  return -1;
+}
+
+function cleanupCorruptedSnowplowData() {
+  try {
+
+    // Limpiar backups corruptos.
+    // Antes solo se limpiaba el valor exacto '1'. Un backup escrito desde una
+    // cookie "0.uuid..." quedaba como '0' y sobrevivia para siempre, y como
+    // getSnowplowDomainUserId() prioriza el backup, envenenaba el matching de
+    // ese browser de forma permanente.
+    try {
+      var ss = sessionStorage.getItem(SP_DUID_BACKUP_KEY);
+      if (ss !== null && !isValidSnowplowDomainUserId(ss)) {
+        sessionStorage.removeItem(SP_DUID_BACKUP_KEY);
+      }
+    } catch(e) {}
+
+    try {
+      var ls = localStorage.getItem(SP_DUID_BACKUP_KEY);
+      if (ls !== null && !isValidSnowplowDomainUserId(ls)) {
+        localStorage.removeItem(SP_DUID_BACKUP_KEY);
+        localStorage.removeItem(SP_DUID_BACKUP_KEY + '_ts');
+      }
+    } catch(e) {}
+
+    // Cookie de backup envenenada.
+    try {
+      var cookieBackupPrefix = SP_DUID_BACKUP_KEY + '=';
+      var backupCookies = document.cookie.split(';');
+
+      for (var b = 0; b < backupCookies.length; b++) {
+        var bc = backupCookies[b].trim();
+
+        if (bc.indexOf(cookieBackupPrefix) === 0) {
+          var bv = decodeURIComponent(bc.substring(cookieBackupPrefix.length));
+
+          if (!isValidSnowplowDomainUserId(bv)) {
+            var bDomain = getRootDomainForSpCookie();
+            var bDomainAttr = bDomain ? '; domain=' + bDomain : '';
+
+            document.cookie = SP_DUID_BACKUP_KEY +
+              '=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/' +
+              bDomainAttr + '; SameSite=Lax';
+
+            document.cookie = SP_DUID_BACKUP_KEY +
+              '=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; SameSite=Lax';
+          }
+          break;
+        }
+      }
+    } catch(e) {}
+
+    // Buscar cookies Snowplow corruptas
+    var cookies = document.cookie.split(';');
+
+    for (var i = 0; i < cookies.length; i++) {
+
+      var cookie = cookies[i].trim();
+
+      if (cookie.indexOf('_sp_id.') !== 0) continue;
+
+      var eqPos = cookie.indexOf('=');
+
+      if (eqPos === -1) continue;
+
+      var cookieName = cookie.substring(0, eqPos);
+
+      var cookieValue = decodeURIComponent(
+        cookie.substring(eqPos + 1)
+      );
+
+      // formato corrupto:
+      // 0.uuid.timestamp...  o  1.uuid.timestamp...
+      // getDomainUserInfo() usa el primer campo como flag 0/1, asi que ambos
+      // prefijos son posibles. Antes solo se detectaba "1.".
+      if (/^[01]\.[0-9a-fA-F-]{36}\./.test(cookieValue)) {
+
+        var domain = getRootDomainForSpCookie();
+        var domainAttr = domain ? '; domain=' + domain : '';
+
+        // borrar versión domain cookie
+        document.cookie =
+          cookieName +
+          '=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/' +
+          domainAttr +
+          '; SameSite=None; Secure';
+
+        // borrar versión host cookie
+        document.cookie =
+          cookieName +
+          '=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; SameSite=None; Secure';
+      }
+    }
+
+  } catch(e) {}
+}
+
+// Obtener dominio raíz para cookies
+function getRootDomainForSpCookie() {
+  try {
+    var hostname = window.location.hostname;
+    if (hostname === 'localhost' || /^\d{1,3}(\.\d{1,3}){3}$/.test(hostname)) return '';
+    
+    var parts = hostname.split('.');
+    if (parts.length >= 2) {
+      var secondLast = parts[parts.length - 2];
+      // Misma lista que getRootDomain() en storage.js. Cuando divergian, la
+      // cookie ams_sp_duid y las ams_* caian en dominios distintos en los
+      // sitios .org.ar / .net.ar, y el borrado del snapshot no encontraba
+      // la cookie que habia escrito storage.js.
+      if (
+        parts.length >= 3 &&
+        (
+          secondLast === 'com' ||
+          secondLast === 'co' ||
+          secondLast === 'gov' ||
+          secondLast === 'org' ||
+          secondLast === 'net'
+        )
+      ) {
+        return '.' + parts.slice(-3).join('.');
+      }
+      return '.' + parts.slice(-2).join('.');
+    }
+    return '';
+  } catch(e) {
+    return '';
+  }
+}
+
+// Persistir domain_userid como backup (SILENCIOSO)
+function persistSpDomainUserIdBackup(duid) {
+  // Guarda unica: nunca persistir '0', '1', 'null', 'undefined', vacio ni
+  // enteros cortos. Antes se filtraba '1' pero no '0'.
+  if (!isValidSnowplowDomainUserId(duid)) return;
+
+  duid = duid.trim();
+
+  try {
+    // 1. localStorage con timestamp
+    try {
+      localStorage.setItem(SP_DUID_BACKUP_KEY, duid);
+      localStorage.setItem(SP_DUID_BACKUP_KEY + '_ts', Date.now().toString());
+    } catch(e) {}
+    
+    // 2. sessionStorage
+    try {
+      sessionStorage.setItem(SP_DUID_BACKUP_KEY, duid);
+    } catch(e) {}
+    
+    // 3. Cookie con dominio raíz
+    try {
+      var d = new Date();
+      d.setTime(d.getTime() + SP_DUID_EXP_MS);
+      var domain = getRootDomainForSpCookie();
+      var domainAttr = domain ? '; domain=' + domain : '';
+      document.cookie = SP_DUID_BACKUP_KEY + '=' + encodeURIComponent(duid) + 
+                        '; expires=' + d.toUTCString() + 
+                        '; path=/' + domainAttr + 
+                        '; SameSite=Lax';
+    } catch(e) {}
+  } catch(e) {}
+}
+
+// Recuperar domain_userid del backup
+function getPersistedSpDomainUserId() {
+  try {
+    // Las tres capas se validan con isValidSnowplowDomainUserId(): un backup
+    // envenenado con '0' escrito por una version anterior no debe volver a
+    // circular, porque este valor tiene prioridad sobre la API de Snowplow.
+
+    // 1. sessionStorage (prioridad)
+    try {
+      var ss = sessionStorage.getItem(SP_DUID_BACKUP_KEY);
+      if (isValidSnowplowDomainUserId(ss)) return ss.trim();
+    } catch(e) {}
+
+    // 2. localStorage con validación de expiración
+    try {
+      var ls = localStorage.getItem(SP_DUID_BACKUP_KEY);
+      if (isValidSnowplowDomainUserId(ls)) {
+        var ts = localStorage.getItem(SP_DUID_BACKUP_KEY + '_ts');
+        if (ts) {
+          var age = Date.now() - parseInt(ts, 10);
+          if (age <= SP_DUID_EXP_MS) return ls.trim();
+          // Expirado: limpiar
+          localStorage.removeItem(SP_DUID_BACKUP_KEY);
+          localStorage.removeItem(SP_DUID_BACKUP_KEY + '_ts');
+        } else {
+          return ls.trim();
+        }
+      }
+    } catch(e) {}
+
+    // 3. Cookie
+    try {
+      var cookieName = SP_DUID_BACKUP_KEY + '=';
+      var cookies = document.cookie.split(';');
+      for (var i = 0; i < cookies.length; i++) {
+        var c = cookies[i].trim();
+        if (c.indexOf(cookieName) === 0) {
+          var val = decodeURIComponent(c.substring(cookieName.length));
+          if (isValidSnowplowDomainUserId(val)) return val.trim();
+        }
+      }
+    } catch(e) {}
+  } catch(e) {}
+  return null;
+}
+
+// Leer domain_userid desde cookie Snowplow
+function getSpDomainUserIdFromCookie() {
+  try {
+    var cookies = document.cookie.split(';');
+    for (var i = 0; i < cookies.length; i++) {
+      var cookie = cookies[i].trim();
+      if (cookie.indexOf('_sp_id.') !== 0) continue;
+
+      // indexOf en vez de split('='): el valor puede contener '=' (padding
+      // base64) y split lo truncaba silenciosamente.
+      var eqPos = cookie.indexOf('=');
+      if (eqPos === -1) continue;
+
+      var value = cookie.substring(eqPos + 1);
+      try { value = decodeURIComponent(value); } catch(e) {}
+
+      var segments = value.split('.');
+      if (!segments.length) continue;
+
+      // Formatos posibles de _sp_id.*:
+      // - Correcto:  "uuid.first_ts.visitas..."      → duid en [0]
+      // - Accidental: "0.uuid.first_ts.visitas..."   → duid en [1]
+      // - Accidental: "1.uuid.first_ts.visitas..."   → duid en [1]
+      //
+      // El primer campo de getDomainUserInfo() es un flag 0/1, asi que ambos
+      // prefijos aparecen en la practica. Nunca devolver el flag: hacerlo
+      // persistia ams_sp_duid = "0" y rompia identity.
+      var candidate = null;
+
+      if (
+        segments.length > 1 &&
+        (segments[0] === '0' || segments[0] === '1')
+      ) {
+        candidate = segments[1];
+      } else {
+        candidate = segments[0];
+      }
+
+      if (isValidSnowplowDomainUserId(candidate)) {
+        return candidate.trim();
+      }
+
+      // Ultimo recurso: si el layout no es ninguno de los conocidos, tomar el
+      // primer segmento con forma de UUID en vez de devolver basura.
+      for (var s = 0; s < segments.length; s++) {
+        if (looksLikeSnowplowUuid(segments[s])) {
+          return segments[s].trim();
+        }
+      }
+    }
+  } catch(e) {}
+  return null;
+}
+
+// ============================================
+// SESION SNOWPLOW PARA PROTECCION DE ATRIBUCION
+// ============================================
+// storage.js se ejecuta primero y puede dejar un snapshot Blue/Admedia
+// pendiente de asociar. Cuando Snowplow inicia, pixel.js enlaza ese
+// snapshot al domain_sessionid real.
+var AMS_SP_SESSION_ID_KEY = 'ams_sp_session_id';
+var AMS_SP_PREVIOUS_SESSION_ID_KEY = 'ams_sp_previous_session_id';
+var AMS_SP_SESSION_ACTIVITY_KEY = 'ams_sp_session_activity_ms';
+var AMS_PROTECTED_ATTRIBUTION_KEY = 'ams_protected_attribution';
+
+function normalizeAmsProtectedSource(value) {
+  if (value === null || value === undefined) return null;
+  var normalized = String(value).trim().toLowerCase();
+  return normalized || null;
+}
+
+function isAmsProtectedSource(value) {
+  var source = normalizeAmsProtectedSource(value);
+  return source === 'blue' || source === 'admedia';
+}
+
+// storage.js replica el snapshot en localStorage + cookie de dominio raiz para
+// que la proteccion sobreviva a la pestania. Borrarlo solo de sessionStorage
+// haria que la siguiente lectura lo resucite desde las otras dos capas.
+function removeAmsProtectedSnapshot() {
+  try {
+    sessionStorage.removeItem(AMS_PROTECTED_ATTRIBUTION_KEY);
+  } catch (e) {}
+
+  try {
+    localStorage.removeItem(AMS_PROTECTED_ATTRIBUTION_KEY);
+    localStorage.removeItem(AMS_PROTECTED_ATTRIBUTION_KEY + '_ts');
+  } catch (e) {}
+
+  try {
+    var domain = getRootDomainForSpCookie();
+    var domainAttr = domain ? '; domain=' + domain : '';
+
+    document.cookie = AMS_PROTECTED_ATTRIBUTION_KEY +
+      '=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/' +
+      domainAttr + '; SameSite=Lax';
+
+    document.cookie = AMS_PROTECTED_ATTRIBUTION_KEY +
+      '=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; SameSite=Lax';
+  } catch (e) {}
+}
+
+function readAmsProtectedSnapshot() {
+  try {
+    var raw = sessionStorage.getItem(AMS_PROTECTED_ATTRIBUTION_KEY);
+
+    if (!raw) {
+      // Puede venir de otra pestania: sessionStorage aun no esta rehidratado.
+      try {
+        raw = localStorage.getItem(AMS_PROTECTED_ATTRIBUTION_KEY);
+      } catch (e) {}
+    }
+
+    if (!raw) return null;
+
+    var snapshot = JSON.parse(raw);
+    return snapshot && typeof snapshot === 'object' ? snapshot : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function bindProtectedAttributionToSnowplowSession(sessionId) {
+  if (!sessionId) return;
+
+  try {
+    var snapshot = readAmsProtectedSnapshot();
+    if (!snapshot) return;
+
+    if (!isAmsProtectedSource(snapshot.utm_source)) {
+      removeAmsProtectedSnapshot();
+      return;
+    }
+
+    // Si el snapshot ya estaba ligado a otra sesion, no debe heredarse.
+    if (
+      snapshot.snowplow_session_id &&
+      snapshot.snowplow_session_id !== sessionId
+    ) {
+      removeAmsProtectedSnapshot();
+      return;
+    }
+
+    snapshot.snowplow_session_id = sessionId;
+    snapshot.pending_session_bind = false;
+    snapshot.session_bound_at = Date.now();
+
+    var serialized = JSON.stringify(snapshot);
+
+    // Se escriben las dos capas que storage.js lee primero. La cookie la
+    // resincroniza storage.js en su proximo saveProtectedSnapshot().
+    try {
+      sessionStorage.setItem(AMS_PROTECTED_ATTRIBUTION_KEY, serialized);
+    } catch (e) {}
+
+    try {
+      localStorage.setItem(AMS_PROTECTED_ATTRIBUTION_KEY, serialized);
+      localStorage.setItem(
+        AMS_PROTECTED_ATTRIBUTION_KEY + '_ts',
+        String(Date.now())
+      );
+    } catch (e) {}
+  } catch (e) {}
+}
+
+function persistSnowplowSessionState(domainUserInfo) {
+  try {
+    if (!domainUserInfo || !domainUserInfo.length) return null;
+
+    // Layout desde el domain_userid:
+    //   [0]=duid [1]=first_ts [2]=visit_count [3]=now_ts [4]=last_visit_ts
+    //   [5]=session_id [6]=previous_session_id ...
+    // Antes se usaban los indices fijos 6 y 7, que solo son correctos si
+    // getDomainUserInfo() trae el flag de version al frente. En un tracker
+    // sin flag, [6] es previous_session_id: guardabamos la sesion anterior
+    // como si fuera la actual.
+    var offset = getSnowplowDomainUserInfoOffset(domainUserInfo);
+    if (offset === -1) return null;
+
+    var sessionIdx = offset + 5;
+    var previousIdx = offset + 6;
+
+    if (domainUserInfo.length <= sessionIdx) return null;
+
+    var sessionId = domainUserInfo[sessionIdx]
+      ? String(domainUserInfo[sessionIdx])
+      : null;
+
+    var previousSessionId = (
+      domainUserInfo.length > previousIdx && domainUserInfo[previousIdx]
+    )
+      ? String(domainUserInfo[previousIdx])
+      : null;
+
+    if (!sessionId) return null;
+
+    try {
+      sessionStorage.setItem(AMS_SP_SESSION_ID_KEY, sessionId);
+      sessionStorage.setItem(
+        AMS_SP_SESSION_ACTIVITY_KEY,
+        String(Date.now())
+      );
+
+      if (previousSessionId) {
+        sessionStorage.setItem(
+          AMS_SP_PREVIOUS_SESSION_ID_KEY,
+          previousSessionId
+        );
+      } else {
+        sessionStorage.removeItem(AMS_SP_PREVIOUS_SESSION_ID_KEY);
+      }
+    } catch (e) {}
+
+    bindProtectedAttributionToSnowplowSession(sessionId);
+
+    return sessionId;
+  } catch (e) {
+    return null;
+  }
+}
+
+function getPersistedSnowplowSessionId() {
+  try {
+    var sessionId = sessionStorage.getItem(AMS_SP_SESSION_ID_KEY);
+    return sessionId || null;
+  } catch (e) {
+    return null;
+  }
+}
+
+// Capturar domain_userid directamente desde Snowplow usando su API
+function captureSpDuidFromTracker() {
+  try {
+    if (!window.snowplow) return null;
+
+    var duid = null;
+    var cookieName = null;
+    var cookieValue = null;
+
+    window.snowplow(function() {
+      try {
+        var trackers = this || {};
+        var trackerNames = Object.keys(trackers);
+
+        for (var i = 0; i < trackerNames.length; i++) {
+          var name = trackerNames[i];
+          var tracker = trackers[name];
+
+          if (tracker && typeof tracker.getDomainUserId === 'function') {
+            var apiDuid = tracker.getDomainUserId();
+
+            // No aceptar un flag o basura como identidad.
+            duid = isValidSnowplowDomainUserId(apiDuid)
+              ? apiDuid.trim()
+              : null;
+
+            if (typeof tracker.getCookieName === 'function') {
+              cookieName = tracker.getCookieName('id');
+            }
+
+            if (typeof tracker.getDomainUserInfo === 'function') {
+              var info = tracker.getDomainUserInfo();
+
+              // Persistir domain_sessionid y previous_session_id.
+              persistSnowplowSessionState(info);
+
+              // La cookie _sp_id.* debe empezar en el domain_userid, sin el
+              // flag de version. Se corta en el offset detectado en vez de
+              // asumir slice(1), que en un tracker sin flag descartaba el
+              // propio domain_userid.
+              var infoOffset = getSnowplowDomainUserInfoOffset(info);
+
+              if (infoOffset !== -1 && info.length > infoOffset) {
+                cookieValue = info.slice(infoOffset).join('.');
+              }
+            }
+
+            if (duid) break;
+          }
+        }
+      } catch(e) {}
+    });
+
+    if (duid && cookieName) {
+      forceSnowplowCookie(cookieName, duid, cookieValue);
+    }
+
+    return duid;
+  } catch(e) {
+    return null;
+  }
+}
+
+function forceSnowplowCookie(cookieName, duid, fullValue) {
+  try {
+    var exists = document.cookie.split(';').some(function(c) {
+      return c.trim().indexOf(cookieName + '=') === 0;
+    });
+
+    if (exists) return;
+
+    // No escribir una cookie de identidad con un valor que no es identidad.
+    if (!isValidSnowplowDomainUserId(duid)) return;
+
+    duid = duid.trim();
+
+    var now = Math.round(Date.now() / 1000);
+
+    // Formato correcto de _sp_id.*:
+    // domain_userid.first_ts.visit_count.current_ts.last_visit_ts.session_id.previous_session_id.first_event_id.first_event_ts.event_index
+    // NO debe empezar con "1."
+    var value = fullValue || (
+      duid + '.' +
+      now + '.1.' +
+      now + '.' +
+      now + '..' +
+      generateUUID() +
+      '....0'
+    );
+
+    // Safety: si por error viene "0.uuid..." o "1.uuid...", removemos el
+    // primer campo. Antes solo se cubria el prefijo "1.".
+    var parts = value.split('.');
+    if (
+      (parts[0] === '0' || parts[0] === '1') &&
+      parts[1] &&
+      /^[0-9a-f-]{36}$/i.test(parts[1])
+    ) {
+      value = parts.slice(1).join('.');
+    }
+
+    var domain = getRootDomainForSpCookie();
+    var domainAttr = domain ? '; domain=' + domain : '';
+
+    var expires = new Date();
+    expires.setTime(expires.getTime() + (730 * 24 * 60 * 60 * 1000));
+
+    document.cookie = cookieName + '=' + encodeURIComponent(value) +
+                      '; expires=' + expires.toUTCString() +
+                      '; path=/' + domainAttr +
+                      '; SameSite=None; Secure';
+  } catch(e) {}
+}
+
+// Generar UUID simple para Snowplow
+function generateUUID() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    var r = Math.random() * 16 | 0;
+    var v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
+// Monitoreo para capturar domain_userid cuando Snowplow lo genere
+function startSpDuidBackupMonitoring() {
+  var checks = 0;
+  var maxChecks = 50; // 5 segundos max (100ms * 50)
+  
+  var interval = setInterval(function() {
+    checks++;
+    
+    // PASO 1: Intentar desde cookie (si existe)
+    var duid = getSpDomainUserIdFromCookie();
+    
+    // PASO 2: Si no hay cookie, intentar desde API de Snowplow
+    if (!duid) {
+      duid = captureSpDuidFromTracker();
+    }
+
+    if (isValidSnowplowDomainUserId(duid)) {
+      // ✅ CAPTURADO: Guardar como backup
+      persistSpDomainUserIdBackup(duid);
+      clearInterval(interval);
+      return;
+    }
+    
+    if (checks >= maxChecks) {
+      clearInterval(interval);
+    }
+  }, 100);
+}
+
+// ✅ MODIFICADO: Obtener domain_userid con sistema de backup transparente
+function getSnowplowDomainUserId(){
+  try {
+    // PASO 1: Intentar desde BACKUP primero (si ya capturamos uno antes)
+    var persisted = getPersistedSpDomainUserId();
+    if (persisted) {
+      return persisted;
+    }
+    
+    // PASO 2: Si no hay backup, intentar desde API de Snowplow (ID NUEVO)
+    // Se revalida aca aunque las fuentes ya validen: este valor alimenta
+    // domain_userid y cid, no puede salir un '0' por ningun camino.
+    var apiDuid = captureSpDuidFromTracker();
+    if (isValidSnowplowDomainUserId(apiDuid)) {
+      // ✅ Capturado desde API: persistir inmediatamente
+      persistSpDomainUserIdBackup(apiDuid);
+      return apiDuid.trim();
+    }
+
+    // PASO 3: Como último recurso, leer desde cookie (puede ser vieja)
+    var cookieDuid = getSpDomainUserIdFromCookie();
+    if (isValidSnowplowDomainUserId(cookieDuid)) {
+      // Cookie encontrada: persistir como backup
+      persistSpDomainUserIdBackup(cookieDuid);
+      return cookieDuid.trim();
+    }
+    
+    // PASO 4: Sin valor disponible
+    return null;
+    
+  } catch(e) {
+    // Fallback en caso de error
+    try {
+      return getPersistedSpDomainUserId();
+    } catch(e2) {
+      return null;
+    }
+  }
+}
+
+// Iniciar monitoreo cuando se carga el script
+try {
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function () {
+      cleanupCorruptedSnowplowData();
+      startSpDuidBackupMonitoring();
+    });
+  } else {
+    cleanupCorruptedSnowplowData();
+    startSpDuidBackupMonitoring();
+  }
+} catch(e) {}
+
+// Helper de diagnostico disponible en consola.
+window.__ams_get_sp_session_id = getPersistedSnowplowSessionId;
+
+// Superficie de test. Aditiva, no altera comportamiento: expone helpers puros
+// para el harness de static/_tests/attribution_tests.html.
+window.__ams_pixel_test_helpers = {
+  looksLikeSnowplowUuid: looksLikeSnowplowUuid,
+  isValidSnowplowDomainUserId: isValidSnowplowDomainUserId,
+  getSnowplowDomainUserInfoOffset: getSnowplowDomainUserInfoOffset,
+  getSpDomainUserIdFromCookie: getSpDomainUserIdFromCookie,
+  normalizeRealtimeAudienceEvent: normalizeRealtimeAudienceEvent,
+  isRealtimeAudienceListEvent: isRealtimeAudienceListEvent,
+  extractProductId: extractProductId
+};
+
+function getCIDFromHM(){
+  try {
+    var hm = null;
+
+    // 1) sessionStorage
+    hm = sessionStorage.getItem("ams_hm");
+    if (!hm) {
+      // 2) localStorage (json)
+      var raw = localStorage.getItem("ams_hm");
+      if (raw) {
+        try {
+          var p = JSON.parse(raw);
+          if (p && p.v) hm = p.v;
+        } catch(_) {}
+      }
+    }
+
+    if (!hm) return {cid: null, source: "none"};
+
+    // hm viene base64 (puede ser URL-safe) → decodificamos con fallback
+    var cid = null;
+    try {
+      // Intento 1: base64 standard
+      cid = atob(hm);
+    } catch(e1) {
+      try {
+        // Intento 2: base64 URL-safe -> standard (- => +, _ => /)
+        var normalized = hm.replace(/-/g, '+').replace(/_/g, '/');
+        // padding si falta
+        while (normalized.length % 4) normalized += '=';
+        cid = atob(normalized);
+      } catch(e2) {
+        // decode falló completamente
+        return {cid: null, source: "decode_fail"};
+      }
+    }
+
+    // sanity check mínimo
+    cid = (cid || "").trim();
+    if (!cid) return {cid: null, source: "decode_fail"};
+
+    return {cid: cid, source: "derived_hm"};
+  } catch(e){
+    return {cid: null, source: "decode_fail"};
+  }
+}
+})();

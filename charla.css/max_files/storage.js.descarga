@@ -1,0 +1,1335 @@
+(function () {
+  'use strict';
+
+  // ============================================================
+  // CONFIGURACION
+  // ============================================================
+
+  // Cualquier parametro de esta lista representa una nueva fuente primaria.
+  //
+  // EL ORDEN IMPORTA: getIncomingPrimary() y storedPrimaryKeyAndValue()
+  // recorren este array y devuelven el primero presente, o sea que define cual
+  // parametro identifica al touch.
+  //
+  // gad_source va ULTIMO a proposito. Es una senal auxiliar de Google con
+  // cardinalidad practicamente nula ("1"), no un identificador de click:
+  // si domina, entonces
+  //   ?gad_source=1&gclid=AAA  y  ?gad_source=1&gclid=BBB
+  // colapsan en el mismo touch {gad_source:'1'} y el segundo click no se
+  // reconoce como nuevo, dejando los subcampos del primero (utm_campaign,
+  // ams_auction) mezclados con el gclid nuevo y sin recrear el snapshot.
+  // Los click IDs, que si identifican el click, van primero.
+  //
+  // utm_source va debajo de los click IDs porque las URLs reales de Google Ads
+  // llevan utm_source=google junto al gclid: con utm_source arriba los dos
+  // touches vuelven a colapsar en {utm_source:'google'}. Esto NO afecta la
+  // proteccion Blue/Admedia, que se decide por el utm_source ALMACENADO
+  // (isProtectedSource(getStored('utm_source'))), no por incomingPrimary.key.
+  const PRIMARY_KEYS = [
+    'gclid',
+    'gbraid',
+    'wbraid',
+    'fbclid',
+    'ttclid',
+    'utm_source',
+    'gad_source'
+  ];
+
+  const UTM_KEYS = [
+    'utm_medium',
+    'utm_campaign',
+    'utm_term',
+    'utm_content'
+  ];
+
+  const EXTRA_KEYS = ['ams_auction'];
+  const ALL_KEYS = PRIMARY_KEYS.concat(UTM_KEYS, EXTRA_KEYS);
+
+  const STORAGE_KEYS = {
+    utm_source: 'ams_s',
+    utm_medium: 'ams_m',
+    utm_campaign: 'ams_c',
+    utm_term: 'ams_t',
+    utm_content: 'ams_co',
+    gad_source: 'ams_gad',
+    fbclid: 'ams_fbclid',
+    ttclid: 'ams_ttclid',
+    gclid: 'ams_gclid',
+    gbraid: 'ams_gbraid',
+    wbraid: 'ams_wbraid',
+    ams_auction: 'ams_a'
+  };
+
+  // Solamente estas fuentes activan la proteccion anti-pisado.
+  const PROTECTED_SOURCES = ['blue', 'admedia'];
+
+  // Unica clave primaria que se compara case-insensitive. utm_source es un
+  // slug editorial ("Blue" y "blue" son la misma fuente). Todo el resto son
+  // identificadores OPACOS emitidos por la plataforma: gclid, gbraid, wbraid,
+  // fbclid y ttclid son case-sensitive, bajarlos a minusculas puede convertir
+  // un ID en otro distinto o inexistente. gad_source es un enum numerico, no
+  // necesita normalizacion de case.
+  //
+  // Esto afecta SOLO la comparacion. El valor almacenado nunca se transforma:
+  // persistValue() usa normalizeValue(), que unicamente hace trim.
+  const CASE_INSENSITIVE_PRIMARY_KEYS = ['utm_source'];
+
+  const COOKIE_DAYS = 90;
+  const EXP_MS = COOKIE_DAYS * 24 * 60 * 60 * 1000;
+
+  // Sesion AMS propia: expira luego de 30 minutos de inactividad.
+  const AMS_SESSION_KEY = 'ams_attribution_session';
+  const AMS_SESSION_TIMEOUT_MS = 30 * 60 * 1000;
+  const PROTECTED_SNAPSHOT_KEY = 'ams_protected_attribution';
+  const LAST_BLOCKED_KEY = 'ams_last_blocked_attribution';
+
+  // La sesion y el snapshot se replican fuera de sessionStorage. El TTL de
+  // storage es solo garbage collection: la expiracion real la sigue decidiendo
+  // last_activity_at, por eso lleva holgura sobre la ventana de inactividad.
+  const AMS_DURABLE_TTL_MS = 2 * AMS_SESSION_TIMEOUT_MS;
+  const DURABLE_COOKIE_MAX_LEN = 3000;
+
+  // Telemetria de intentos bloqueados.
+  // OJO: este schema debe existir en Iglu antes del deploy, si no los eventos
+  // caen en bad rows.
+  const BLOCKED_EVENT_SCHEMA =
+    'iglu:com.admedia/blocked_attribution/jsonschema/1-0-0';
+  const BLOCKED_QUEUE_KEY = 'ams_blocked_attribution_queue';
+  const BLOCKED_QUEUE_MAX = 20;
+  const BLOCKED_DEDUPE_KEY = 'ams_blocked_attribution_dedupe';
+  const BLOCKED_DEDUPE_WINDOW_MS = 10 * 1000;
+
+  const BLOCK_REASON_PROTECTED = 'protected_session_overwrite';
+
+  // Sin uso desde que el hard-block quedo restringido a Blue/Admedia: un
+  // primario que finalmente se acepta ya no genera blocked_attribution.
+  // NO BORRAR: sigue en el enum del schema 1-0-0 y en los datos historicos.
+  const BLOCK_REASON_INJECTED = 'injected_no_navigation';
+
+  let amsIsRestoringUrl = false;
+  let amsCheckScheduled = false;
+
+  // ============================================================
+  // UTILIDADES GENERALES
+  // ============================================================
+
+  function now() {
+    return Date.now();
+  }
+
+  function normalizeValue(value) {
+    if (value === null || value === undefined) return null;
+    const normalized = String(value).trim();
+    return normalized === '' ? null : normalized;
+  }
+
+  function normalizeSource(value) {
+    const normalized = normalizeValue(value);
+    return normalized ? normalized.toLowerCase() : null;
+  }
+
+  function isProtectedSource(value) {
+    const source = normalizeSource(value);
+    return source !== null && PROTECTED_SOURCES.indexOf(source) !== -1;
+  }
+
+  // Forma canonica de una clave primaria para COMPARAR, no para almacenar.
+  // Ver CASE_INSENSITIVE_PRIMARY_KEYS: los click IDs se comparan exactos.
+  function normalizePrimaryForComparison(key, value) {
+    const normalized = normalizeValue(value);
+    if (normalized === null) return null;
+
+    return CASE_INSENSITIVE_PRIMARY_KEYS.indexOf(key) !== -1
+      ? normalized.toLowerCase()
+      : normalized;
+  }
+
+  function primariesAreEqual(key, a, b) {
+    const left = normalizePrimaryForComparison(key, a);
+    const right = normalizePrimaryForComparison(key, b);
+
+    return left !== null && left === right;
+  }
+
+  function truncateString(value, maxLength) {
+    if (value === null || value === undefined) return null;
+
+    const str = String(value);
+    return str.length > maxLength ? str.slice(0, maxLength) : str;
+  }
+
+  function generateUUID() {
+    try {
+      if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+        return window.crypto.randomUUID();
+      }
+    } catch (e) {}
+
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+      const r = Math.random() * 16 | 0;
+      const v = c === 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
+  }
+
+  function readJsonFromSession(key) {
+    try {
+      const raw = sessionStorage.getItem(key);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' ? parsed : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function writeJsonToSession(key, value) {
+    try {
+      sessionStorage.setItem(key, JSON.stringify(value));
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // ============================================================
+  // DOMINIO Y COOKIES
+  // ============================================================
+
+  function getRootDomain() {
+    try {
+      const hostname = window.location.hostname;
+
+      if (
+        hostname === 'localhost' ||
+        /^\d{1,3}(\.\d{1,3}){3}$/.test(hostname)
+      ) {
+        return '';
+      }
+
+      const parts = hostname.split('.');
+      if (parts.length < 2) return '';
+
+      const secondLast = parts[parts.length - 2];
+
+      // Casos habituales: .com.ar, .com.br, .co.uk, etc.
+      if (
+        parts.length >= 3 &&
+        (
+          secondLast === 'com' ||
+          secondLast === 'co' ||
+          secondLast === 'gov' ||
+          secondLast === 'org' ||
+          secondLast === 'net'
+        )
+      ) {
+        return '.' + parts.slice(-3).join('.');
+      }
+
+      return '.' + parts.slice(-2).join('.');
+    } catch (e) {
+      return '';
+    }
+  }
+
+  function setCookieMs(key, value, ms) {
+    try {
+      const expires = new Date();
+      expires.setTime(expires.getTime() + ms);
+
+      const domain = getRootDomain();
+      const domainAttr = domain ? '; domain=' + domain : '';
+
+      document.cookie =
+        key + '=' + encodeURIComponent(value) +
+        '; expires=' + expires.toUTCString() +
+        '; path=/' + domainAttr +
+        '; SameSite=Lax';
+    } catch (e) {}
+  }
+
+  function setCookie(key, value, days) {
+    setCookieMs(key, value, days * 86400000);
+  }
+
+  function getCookie(key) {
+    try {
+      const prefix = key + '=';
+      const cookies = document.cookie.split(';');
+
+      for (let i = 0; i < cookies.length; i++) {
+        const cookie = cookies[i].trim();
+        if (cookie.indexOf(prefix) === 0) {
+          return decodeURIComponent(cookie.substring(prefix.length));
+        }
+      }
+    } catch (e) {}
+
+    return null;
+  }
+
+  function removeCookie(key) {
+    try {
+      const domain = getRootDomain();
+      const domainAttr = domain ? '; domain=' + domain : '';
+
+      // Eliminar version con domain.
+      document.cookie =
+        key + '=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/' +
+        domainAttr + '; SameSite=Lax';
+
+      // Eliminar tambien version host-only, por compatibilidad.
+      document.cookie =
+        key + '=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; SameSite=Lax';
+    } catch (e) {}
+  }
+
+  // ============================================================
+  // LOCAL STORAGE / SESSION STORAGE
+  // ============================================================
+
+  function setLS(key, value) {
+    try {
+      localStorage.setItem(key, value);
+      localStorage.setItem(key + '_ts', String(now()));
+    } catch (e) {}
+  }
+
+  function getLS(key, ttlMs) {
+    try {
+      const value = localStorage.getItem(key);
+      if (!value) return null;
+
+      const limit = ttlMs || EXP_MS;
+      const timestamp = parseInt(localStorage.getItem(key + '_ts') || '0', 10);
+      if (!timestamp || now() - timestamp > limit) {
+        localStorage.removeItem(key);
+        localStorage.removeItem(key + '_ts');
+        return null;
+      }
+
+      return value;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function setSS(key, value) {
+    try {
+      sessionStorage.setItem(key, value);
+    } catch (e) {}
+  }
+
+  function getSS(key) {
+    try {
+      return sessionStorage.getItem(key);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function removeEverywhere(shortKey) {
+    removeCookie(shortKey);
+
+    try {
+      localStorage.removeItem(shortKey);
+      localStorage.removeItem(shortKey + '_ts');
+    } catch (e) {}
+
+    try {
+      sessionStorage.removeItem(shortKey);
+    } catch (e) {}
+  }
+
+  function getStored(key) {
+    const shortKey = STORAGE_KEYS[key];
+    if (!shortKey) return null;
+
+    return getSS(shortKey) || getLS(shortKey) || getCookie(shortKey);
+  }
+
+  function persistValue(key, value) {
+    const shortKey = STORAGE_KEYS[key];
+    const normalized = normalizeValue(value);
+
+    if (!shortKey || normalized === null) return;
+
+    // Evita escrituras innecesarias si ya esta almacenado el mismo valor.
+    if (getStored(key) === normalized) {
+      return;
+    }
+
+    setCookie(shortKey, normalized, COOKIE_DAYS);
+    setLS(shortKey, normalized);
+    setSS(shortKey, normalized);
+  }
+
+  function storedPrimaryKeyAndValue() {
+    for (let i = 0; i < PRIMARY_KEYS.length; i++) {
+      const key = PRIMARY_KEYS[i];
+      const value = getStored(key);
+
+      if (normalizeValue(value) !== null) {
+        return {
+          key: key,
+          value: String(value)
+        };
+      }
+    }
+
+    return {
+      key: null,
+      value: null
+    };
+  }
+
+  // ============================================================
+  // PERSISTENCIA DURABLE (sessionStorage + localStorage + cookie)
+  // ============================================================
+  // sessionStorage muere con la pestania. Guardar ahi la sesion y el snapshot
+  // protegido significaba que el valor atribuido vivia 90 dias pero la defensa
+  // sobre ese valor duraba una sola pestania: una pestania nueva (o el retorno
+  // desde un gateway de pago) reseteaba la sesion, borraba el snapshot y
+  // dejaba que cualquier primario entrante pisara la atribucion guardada.
+  // Se replica en localStorage (TTL absoluto propio) y en cookie de dominio
+  // raiz, que ademas cubre el salto entre subdominios.
+
+  function readDurableJson(key, ttlMs) {
+    // 1) sessionStorage
+    const fromSession = readJsonFromSession(key);
+    if (fromSession) return fromSession;
+
+    // 2) localStorage con TTL absoluto
+    try {
+      const raw = getLS(key, ttlMs);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') {
+          // Rehidratar la pestania actual para no re-parsear en cada lectura.
+          writeJsonToSession(key, parsed);
+          return parsed;
+        }
+      }
+    } catch (e) {}
+
+    // 3) cookie de dominio raiz (cross-subdominio)
+    try {
+      const cookieRaw = getCookie(key);
+      if (cookieRaw) {
+        const parsed = JSON.parse(cookieRaw);
+        if (parsed && typeof parsed === 'object') {
+          writeJsonToSession(key, parsed);
+          return parsed;
+        }
+      }
+    } catch (e) {}
+
+    return null;
+  }
+
+  function writeDurableJson(key, value, ttlMs) {
+    const written = writeJsonToSession(key, value);
+
+    let serialized = null;
+    try {
+      serialized = JSON.stringify(value);
+    } catch (e) {
+      return written;
+    }
+
+    setLS(key, serialized);
+
+    try {
+      if (encodeURIComponent(serialized).length <= DURABLE_COOKIE_MAX_LEN) {
+        setCookieMs(key, serialized, ttlMs);
+      } else {
+        // No dejar una cookie desactualizada si el payload crecio de mas.
+        removeCookie(key);
+      }
+    } catch (e) {}
+
+    return written;
+  }
+
+  function removeDurableJson(key) {
+    try {
+      sessionStorage.removeItem(key);
+    } catch (e) {}
+
+    try {
+      localStorage.removeItem(key);
+      localStorage.removeItem(key + '_ts');
+    } catch (e) {}
+
+    removeCookie(key);
+  }
+
+  // ============================================================
+  // ORIGEN DEL PARAMETRO: NAVEGACION REAL vs INYECCION EN PAGINA
+  // ============================================================
+  // Nadie hace click en un anuncio y aterriza en la pagina en la que ya esta.
+  // Un parametro de atribucion que aparece via pushState/replaceState sobre
+  // un documento ya cargado, sin navegacion, no corresponde a un click real.
+  // Se compara siempre contra el query string con el que se cargo ESTE
+  // documento.
+
+  const AMS_INITIAL_QUERY = (function () {
+    try {
+      return window.location.search || '';
+    } catch (e) {
+      return '';
+    }
+  })();
+
+  const AMS_INITIAL_PRIMARIES = (function () {
+    const map = {};
+
+    try {
+      const params = new URLSearchParams(AMS_INITIAL_QUERY);
+
+      for (let i = 0; i < PRIMARY_KEYS.length; i++) {
+        const key = PRIMARY_KEYS[i];
+        // Forma de comparacion, no el valor crudo: los click IDs quedan
+        // exactos, solo utm_source baja a minusculas.
+        const value = normalizePrimaryForComparison(key, params.get(key));
+
+        if (value !== null) {
+          map[key] = value;
+        }
+      }
+    } catch (e) {}
+
+    return map;
+  })();
+
+  function primaryCameFromNavigation(incomingPrimary) {
+    if (!incomingPrimary || !incomingPrimary.key) return false;
+
+    const landed = AMS_INITIAL_PRIMARIES[incomingPrimary.key];
+    if (landed === undefined) return false;
+
+    return (
+      landed ===
+      normalizePrimaryForComparison(incomingPrimary.key, incomingPrimary.value)
+    );
+  }
+
+  // ============================================================
+  // BOUNDARY DE SESION SNOWPLOW (VALIDACION ADICIONAL)
+  // ============================================================
+  // storage.js puede correr antes que el tracker, asi que la sesion AMS de 30
+  // minutos sigue siendo la autoridad y el fallback. Snowplow actua solo como
+  // validacion extra: si YA conocemos la sesion Snowplow actual y el snapshot
+  // fue ligado a OTRA, el snapshot pertenece a una sesion vieja y no se
+  // aplica. Si todavia no la conocemos, no se bloquea nada.
+  //
+  // ams_sp_session_id lo escribe pixel.js, que corre despues, o sea que en el
+  // pageview N leemos el valor escrito en N-1. La comparacion queda un
+  // pageview atrasada: nunca invalida de mas, a lo sumo invalida tarde.
+  // No se agrega polling.
+
+  const AMS_SP_SESSION_ID_KEY = 'ams_sp_session_id';
+
+  function getCurrentSnowplowSessionId() {
+    try {
+      const value = sessionStorage.getItem(AMS_SP_SESSION_ID_KEY);
+
+      if (
+        value &&
+        value !== 'null' &&
+        value !== 'undefined' &&
+        value !== ''
+      ) {
+        return value;
+      }
+    } catch (e) {}
+
+    return null;
+  }
+
+  function snapshotMatchesSnowplowSession(snapshot) {
+    // Snapshot sin bind todavia: Snowplow no tiene opinion.
+    if (!snapshot || !snapshot.snowplow_session_id) return true;
+
+    const current = getCurrentSnowplowSessionId();
+
+    // Tracker aun no cargo en esta pestania: fallback a la sesion AMS.
+    if (!current) return true;
+
+    return snapshot.snowplow_session_id === current;
+  }
+
+  function getNavigationRedirectCount() {
+    try {
+      const entries = window.performance.getEntriesByType('navigation');
+
+      if (
+        entries &&
+        entries.length &&
+        typeof entries[0].redirectCount === 'number'
+      ) {
+        return entries[0].redirectCount;
+      }
+    } catch (e) {}
+
+    return null;
+  }
+
+  // ============================================================
+  // TELEMETRIA DE INTENTOS BLOQUEADOS
+  // ============================================================
+  // storage.js corre antes que el tracker, asi que los eventos se encolan y se
+  // vacian en cuanto window.snowplow existe. La cola vive en sessionStorage
+  // para poder reintentar en el pageview siguiente si el tracker nunca cargo.
+
+  // Limites que declara el schema 1-0-0. Se truncan aca para no depender de
+  // que el validador de Iglu los recorte por nosotros (no lo hace: rechaza).
+  const BLOCKED_MAX_LEN = {
+    protected_source: 64,
+    incoming_primary_value: 512,
+    attempted_url: 4096,
+    restored_url: 4096,
+    page_referrer: 4096,
+    ams_session_id: 64,
+    blocked_at: 32
+  };
+
+  // Solo se transmiten origin + pathname + los parametros de atribucion.
+  // Cualquier otro query param (tokens, emails en la URL, ids de sesion del
+  // sitio) se descarta antes de salir del browser. El hash tambien se
+  // descarta: en SPAs suele llevar estado arbitrario.
+  //
+  // Esto NO modifica la URL real del navegador, solo el valor reportado.
+  function sanitizeUrlForTelemetry(rawUrl, maxLength) {
+    const value = normalizeValue(rawUrl);
+    if (value === null) return null;
+
+    try {
+      const url = new URL(value, window.location.href);
+      const kept = new URLSearchParams();
+
+      for (let i = 0; i < ALL_KEYS.length; i++) {
+        const key = ALL_KEYS[i];
+        const param = url.searchParams.get(key);
+
+        if (param !== null) {
+          kept.set(key, param);
+        }
+      }
+
+      const query = kept.toString();
+
+      return truncateString(
+        url.origin + url.pathname + (query ? '?' + query : ''),
+        maxLength
+      );
+    } catch (e) {
+      // URL no parseable: mejor no reportar nada que filtrar query crudo.
+      return null;
+    }
+  }
+
+  // Dedupe simple: un SPA que dispare 50 replaceState no debe producir 50
+  // eventos identicos. Eventos distintos (otra reason, otro primario, otro
+  // valor u otra sesion) no se descartan nunca.
+  function buildBlockedDedupeKey(data) {
+    return [
+      data.reason,
+      data.incoming_primary_key,
+      data.incoming_primary_value,
+      data.ams_session_id
+    ].join('|');
+  }
+
+  function shouldEmitBlockedEvent(dedupeKey) {
+    try {
+      const raw = sessionStorage.getItem(BLOCKED_DEDUPE_KEY);
+      const parsed = raw ? JSON.parse(raw) : null;
+      const entries = parsed && typeof parsed === 'object' ? parsed : {};
+
+      const timestamp = now();
+      const last = entries[dedupeKey];
+
+      const emit = !(
+        typeof last === 'number' &&
+        timestamp - last < BLOCKED_DEDUPE_WINDOW_MS
+      );
+
+      // Purga de entradas vencidas para que el mapa no crezca sin limite.
+      const pruned = {};
+      const keys = Object.keys(entries);
+
+      for (let i = 0; i < keys.length; i++) {
+        if (timestamp - entries[keys[i]] < BLOCKED_DEDUPE_WINDOW_MS) {
+          pruned[keys[i]] = entries[keys[i]];
+        }
+      }
+
+      if (emit) {
+        pruned[dedupeKey] = timestamp;
+      }
+
+      sessionStorage.setItem(BLOCKED_DEDUPE_KEY, JSON.stringify(pruned));
+
+      return emit;
+    } catch (e) {
+      // Ante error de storage preferimos emitir: perder un evento legitimo es
+      // peor que mandar un duplicado.
+      return true;
+    }
+  }
+
+  function readBlockedQueue() {
+    try {
+      const raw = sessionStorage.getItem(BLOCKED_QUEUE_KEY);
+      if (!raw) return [];
+
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function writeBlockedQueue(queue) {
+    try {
+      sessionStorage.setItem(BLOCKED_QUEUE_KEY, JSON.stringify(queue));
+    } catch (e) {}
+  }
+
+  function flushBlockedEvents() {
+    const queue = readBlockedQueue();
+    if (!queue.length) return;
+
+    let tracker = null;
+    try {
+      tracker = window.snowplow;
+    } catch (e) {}
+
+    if (typeof tracker !== 'function') return;
+
+    // Vaciar antes de enviar para no duplicar si el tracker reentra.
+    writeBlockedQueue([]);
+
+    for (let i = 0; i < queue.length; i++) {
+      try {
+        tracker('trackSelfDescribingEvent', {
+          event: {
+            schema: BLOCKED_EVENT_SCHEMA,
+            data: queue[i]
+          }
+        });
+      } catch (e) {
+        try {
+          const pending = readBlockedQueue();
+          pending.push(queue[i]);
+          writeBlockedQueue(pending);
+        } catch (e2) {}
+      }
+    }
+  }
+
+  function enqueueBlockedEvent(data) {
+    try {
+      const queue = readBlockedQueue();
+      queue.push(data);
+
+      while (queue.length > BLOCKED_QUEUE_MAX) {
+        queue.shift();
+      }
+
+      writeBlockedQueue(queue);
+    } catch (e) {}
+
+    flushBlockedEvents();
+  }
+
+  function startBlockedEventFlushMonitor() {
+    try {
+      flushBlockedEvents();
+
+      let checks = 0;
+      const interval = setInterval(function () {
+        checks++;
+        flushBlockedEvents();
+
+        if (typeof window.snowplow === 'function' || checks >= 50) {
+          clearInterval(interval);
+        }
+      }, 200);
+    } catch (e) {}
+  }
+
+  // ============================================================
+  // SESION AMS PROPIA
+  // ============================================================
+
+  function createAttributionSession() {
+    const timestamp = now();
+    const session = {
+      id: generateUUID(),
+      started_at: timestamp,
+      last_activity_at: timestamp
+    };
+
+    writeDurableJson(AMS_SESSION_KEY, session, AMS_DURABLE_TTL_MS);
+    return session;
+  }
+
+  function getActiveAttributionSession() {
+    const timestamp = now();
+    let session = readDurableJson(AMS_SESSION_KEY, AMS_DURABLE_TTL_MS);
+
+    const expired =
+      !session ||
+      !session.id ||
+      !session.last_activity_at ||
+      timestamp - Number(session.last_activity_at) > AMS_SESSION_TIMEOUT_MS;
+
+    if (expired) {
+      session = createAttributionSession();
+
+      // La persistencia historica continua, pero la proteccion anterior termina.
+      removeDurableJson(PROTECTED_SNAPSHOT_KEY);
+
+      return {
+        session: session,
+        is_new: true
+      };
+    }
+
+    session.last_activity_at = timestamp;
+    writeDurableJson(AMS_SESSION_KEY, session, AMS_DURABLE_TTL_MS);
+
+    return {
+      session: session,
+      is_new: false
+    };
+  }
+
+  // ============================================================
+  // SNAPSHOT PROTEGIDO
+  // ============================================================
+
+  function buildSnapshotFromStored(sessionId) {
+    const snapshot = {
+      session_id: sessionId,
+      protected_at: now()
+    };
+
+    for (let i = 0; i < ALL_KEYS.length; i++) {
+      const key = ALL_KEYS[i];
+      snapshot[key] = normalizeValue(getStored(key));
+    }
+
+    return snapshot;
+  }
+
+  function getProtectedSnapshot() {
+    return readDurableJson(PROTECTED_SNAPSHOT_KEY, AMS_DURABLE_TTL_MS);
+  }
+
+  function saveProtectedSnapshot(sessionId) {
+    const source = normalizeSource(getStored('utm_source'));
+    if (!isProtectedSource(source)) return false;
+
+    const snapshot = buildSnapshotFromStored(sessionId);
+
+    // buildSnapshotFromStored() reconstruye desde cero, asi que sin esto el
+    // bind con la sesion de Snowplow que escribe pixel.js se perdia en cada
+    // navegacion SPA y no se volvia a escribir nunca.
+    const previous = getProtectedSnapshot();
+    if (
+      previous &&
+      previous.session_id === sessionId &&
+      previous.snowplow_session_id
+    ) {
+      snapshot.snowplow_session_id = previous.snowplow_session_id;
+      snapshot.session_bound_at = previous.session_bound_at || null;
+    }
+
+    return writeDurableJson(
+      PROTECTED_SNAPSHOT_KEY,
+      snapshot,
+      AMS_DURABLE_TTL_MS
+    );
+  }
+
+  function restoreProtectedAttribution(snapshot) {
+    if (!snapshot || !isProtectedSource(snapshot.utm_source)) return;
+
+    for (let i = 0; i < ALL_KEYS.length; i++) {
+      const key = ALL_KEYS[i];
+      const shortKey = STORAGE_KEYS[key];
+      const value = normalizeValue(snapshot[key]);
+
+      if (value !== null) {
+        persistValue(key, value);
+      } else {
+        removeEverywhere(shortKey);
+      }
+    }
+  }
+
+  // ============================================================
+  // DETECCION DE FUENTE PRIMARIA ENTRANTE
+  // ============================================================
+
+  function getIncomingPrimary(queryParams) {
+    for (let i = 0; i < PRIMARY_KEYS.length; i++) {
+      const key = PRIMARY_KEYS[i];
+      const value = normalizeValue(queryParams.get(key));
+
+      if (value !== null) {
+        return {
+          key: key,
+          value: value
+        };
+      }
+    }
+
+    return {
+      key: null,
+      value: null
+    };
+  }
+
+  function incomingPrimaryMatchesSnapshot(incomingPrimary, snapshot) {
+    if (!incomingPrimary || !incomingPrimary.key || !snapshot) {
+      return false;
+    }
+
+    return primariesAreEqual(
+      incomingPrimary.key,
+      snapshot[incomingPrimary.key],
+      incomingPrimary.value
+    );
+  }
+
+  // ============================================================
+  // RESTAURACION DE URL SIN RECARGA
+  // ============================================================
+
+  function restoreProtectedAttributionInUrl(snapshot) {
+    if (
+      amsIsRestoringUrl ||
+      !snapshot ||
+      !isProtectedSource(snapshot.utm_source)
+    ) {
+      return false;
+    }
+
+    try {
+      amsIsRestoringUrl = true;
+
+      const url = new URL(window.location.href);
+
+      // Se restauran todas las claves de atribucion.
+      // Los parametros ajenos a atribucion se conservan.
+      for (let i = 0; i < ALL_KEYS.length; i++) {
+        const key = ALL_KEYS[i];
+        const value = normalizeValue(snapshot[key]);
+
+        if (value !== null) {
+          url.searchParams.set(key, value);
+        } else {
+          url.searchParams.delete(key);
+        }
+      }
+
+      const restoredUrl = url.pathname + url.search + url.hash;
+      const currentUrl =
+        window.location.pathname +
+        window.location.search +
+        window.location.hash;
+
+      if (restoredUrl !== currentUrl) {
+        window.history.replaceState(
+          window.history.state,
+          document.title,
+          restoredUrl
+        );
+      }
+
+      return true;
+    } catch (e) {
+      return false;
+    } finally {
+      amsIsRestoringUrl = false;
+    }
+  }
+
+  function registerBlockedAttempt(
+    session,
+    snapshot,
+    incomingPrimary,
+    attemptedUrl,
+    reason,
+    restored
+  ) {
+    const timestamp = now();
+    const protectedSource = normalizeSource(snapshot && snapshot.utm_source);
+    const restoredUrl = restored ? window.location.href : null;
+
+    writeJsonToSession(LAST_BLOCKED_KEY, {
+      session_id: session.id,
+      reason: reason,
+      protected_source: protectedSource,
+      incoming_primary_key: incomingPrimary.key,
+      incoming_primary_value: incomingPrimary.value,
+      attempted_url: attemptedUrl,
+      restored_url: restoredUrl,
+      blocked_at: timestamp
+    });
+
+    // El diagnostico en sessionStorage no salia del browser: sin esto estamos
+    // juntando evidencia de intentos de sobrescritura ajenos y tirandola a la
+    // basura.
+    let referrer = null;
+    try {
+      referrer = document.referrer || null;
+    } catch (e) {}
+
+    // Payload saneado y truncado a los limites del schema 1-0-0. Las claves
+    // son exactamente las mismas que antes, asi que el contrato no cambia y
+    // no hace falta un 1-0-1.
+    const payload = {
+      reason: reason,
+      protected_source: truncateString(
+        protectedSource,
+        BLOCKED_MAX_LEN.protected_source
+      ),
+      incoming_primary_key: incomingPrimary.key,
+      incoming_primary_value: truncateString(
+        incomingPrimary.value,
+        BLOCKED_MAX_LEN.incoming_primary_value
+      ),
+      attempted_url: sanitizeUrlForTelemetry(
+        attemptedUrl,
+        BLOCKED_MAX_LEN.attempted_url
+      ),
+      restored_url: sanitizeUrlForTelemetry(
+        restoredUrl,
+        BLOCKED_MAX_LEN.restored_url
+      ),
+      page_referrer: sanitizeUrlForTelemetry(
+        referrer,
+        BLOCKED_MAX_LEN.page_referrer
+      ),
+      redirect_count: getNavigationRedirectCount(),
+      ams_session_id: truncateString(
+        session.id,
+        BLOCKED_MAX_LEN.ams_session_id
+      ),
+      blocked_at: truncateString(
+        new Date(timestamp).toISOString(),
+        BLOCKED_MAX_LEN.blocked_at
+      )
+    };
+
+    if (shouldEmitBlockedEvent(buildBlockedDedupeKey(payload))) {
+      enqueueBlockedEvent(payload);
+    }
+  }
+
+  // ============================================================
+  // LOGICA PRINCIPAL DE ATRIBUCION
+  // ============================================================
+
+  function handleStorage(trigger) {
+    if (amsIsRestoringUrl) return;
+
+    flushBlockedEvents();
+
+    const fromHistory = trigger === 'history';
+    const queryParams = new URLSearchParams(window.location.search);
+    const sessionState = getActiveAttributionSession();
+    const currentSession = sessionState.session;
+    const incomingPrimary = getIncomingPrimary(queryParams);
+
+    let snapshot = getProtectedSnapshot();
+
+    // Validacion adicional de Snowplow: un snapshot ligado a una sesion
+    // Snowplow que ya no es la actual pertenece a una visita vieja.
+    if (snapshot && !snapshotMatchesSnowplowSession(snapshot)) {
+      removeDurableJson(PROTECTED_SNAPSHOT_KEY);
+      snapshot = null;
+    }
+
+    const sameProtectedSession = Boolean(
+      snapshot &&
+      snapshot.session_id &&
+      snapshot.session_id === currentSession.id
+    );
+
+    const protectedSourceIsValid = Boolean(
+      snapshot && isProtectedSource(snapshot.utm_source)
+    );
+
+    const hasIncomingPrimary = Boolean(incomingPrimary.key);
+
+    // Primario que aparece sobre un documento YA CARGADO, sin navegacion.
+    // fromHistory solo es true para pushState/replaceState/popstate, o sea
+    // que una navegacion real (documento nuevo, handleStorage('load')) nunca
+    // entra aca. Aplica a cualquier fuente, incluidas las nuestras: un touch
+    // inyectado por script no es un click.
+    const injectedWithoutNavigation =
+      hasIncomingPrimary &&
+      fromHistory &&
+      !primaryCameFromNavigation(incomingPrimary);
+
+    const incomingIsSameProtectedTouch = incomingPrimaryMatchesSnapshot(
+      incomingPrimary,
+      snapshot
+    );
+
+    // AMS protege NUESTRA atribucion. AMS no arbitra atribucion entre
+    // terceros.
+    //
+    // Este es el UNICO hard-block permitido: hay un snapshot Blue/Admedia
+    // vigente en esta sesion y un primario distinto aparecio sobre un
+    // documento ya cargado, sin navegacion. Ahi si se restaura.
+    //
+    // Fuera de ese caso NO se bloquea, aunque el primario haya entrado por
+    // History API. Un router SPA, GTM, un CMP o un loader del sitio pueden
+    // reconstruir parametros legitimos: History API por si solo no es
+    // evidencia de fraude, y sin proteccion nuestra vigente no nos toca
+    // decidir si un gclid o un fbclid de un tercero es valido. Cae al flujo
+    // normal de atribucion de mas abajo.
+    if (
+      injectedWithoutNavigation &&
+      sameProtectedSession &&
+      protectedSourceIsValid &&
+      !incomingIsSameProtectedTouch
+    ) {
+      const attemptedUrl = window.location.href;
+
+      restoreProtectedAttribution(snapshot);
+      restoreProtectedAttributionInUrl(snapshot);
+      registerBlockedAttempt(
+        currentSession,
+        snapshot,
+        incomingPrimary,
+        attemptedUrl,
+        BLOCK_REASON_PROTECTED,
+        true
+      );
+
+      return;
+    }
+
+    const existingPrimary = storedPrimaryKeyAndValue();
+
+    // Cambio natural de fuente primaria: reemplaza el touch anterior.
+    // La comparacion de valor pasa por primariesAreEqual(): antes era ===
+    // crudo, lo que hacia que "?utm_source=Blue" contra "blue" almacenado se
+    // tomara como touch nuevo y wipeara todas las claves.
+    if (
+      incomingPrimary.key &&
+      (
+        incomingPrimary.key !== existingPrimary.key ||
+        !primariesAreEqual(
+          incomingPrimary.key,
+          incomingPrimary.value,
+          existingPrimary.value
+        )
+      )
+    ) {
+      for (let i = 0; i < ALL_KEYS.length; i++) {
+        const key = ALL_KEYS[i];
+        const shortKey = STORAGE_KEYS[key];
+        const value = normalizeValue(queryParams.get(key));
+
+        if (value !== null) {
+          persistValue(key, value);
+        } else {
+          removeEverywhere(shortKey);
+        }
+      }
+
+      // Si la nueva fuente aceptada es Blue/Admedia, crear proteccion.
+      if (isProtectedSource(getStored('utm_source'))) {
+        saveProtectedSnapshot(currentSession.id);
+      } else {
+        // Una fuente nueva no protegida invalida cualquier snapshot anterior.
+        removeDurableJson(PROTECTED_SNAPSHOT_KEY);
+      }
+
+      return;
+    }
+
+    // Misma fuente o URL sin cambio primario: actualizar solo claves presentes.
+    for (let i = 0; i < ALL_KEYS.length; i++) {
+      const key = ALL_KEYS[i];
+      const value = normalizeValue(queryParams.get(key));
+
+      if (value !== null) {
+        persistValue(key, value);
+      }
+    }
+
+    // Mantener actualizado el snapshot de Blue/Admedia durante la misma sesion.
+    if (isProtectedSource(getStored('utm_source'))) {
+      saveProtectedSnapshot(currentSession.id);
+    }
+  }
+
+  // ============================================================
+  // EJECUCION Y SOPORTE PARA SPA
+  // ============================================================
+
+  function scheduleAttributionCheck() {
+    if (amsIsRestoringUrl || amsCheckScheduled) return;
+
+    amsCheckScheduled = true;
+
+    Promise.resolve().then(function () {
+      amsCheckScheduled = false;
+      if (!amsIsRestoringUrl) {
+        handleStorage('history');
+      }
+    });
+  }
+
+  function installHistoryHooks() {
+    try {
+      const originalPushState = window.history.pushState;
+      const originalReplaceState = window.history.replaceState;
+
+      window.history.pushState = function () {
+        const result = originalPushState.apply(window.history, arguments);
+        scheduleAttributionCheck();
+        return result;
+      };
+
+      window.history.replaceState = function () {
+        const result = originalReplaceState.apply(window.history, arguments);
+
+        if (!amsIsRestoringUrl) {
+          scheduleAttributionCheck();
+        }
+
+        return result;
+      };
+
+      window.addEventListener('popstate', scheduleAttributionCheck);
+    } catch (e) {}
+  }
+
+  // Los hooks se instalan antes del primer chequeo para poder detectar
+  // inyecciones que ocurran durante la carga misma de la pagina.
+  installHistoryHooks();
+
+  // Ejecucion sincronica en tiempo de parseo. Esperar a DOMContentLoaded
+  // llegaba tarde: el config tag de GA4/GTM ya habia leido location.search,
+  // asi que la reescritura de URL solo servia para nuestro propio pixel.
+  handleStorage('load');
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function () {
+      handleStorage('load');
+    }, { once: true });
+  }
+
+  startBlockedEventFlushMonitor();
+
+  // ============================================================
+  // PARAMETRO hm PARA pixel.js
+  // ============================================================
+
+  try {
+    const scripts = document.getElementsByTagName('script');
+    let hm = null;
+
+    for (let i = 0; i < scripts.length; i++) {
+      const source = scripts[i].src || '';
+
+      // Este archivo se sirve con los dos nombres: buscar solo /storage.js
+      // dejaba el hm sin capturar en los clientes que cargan track_pixel.js.
+      if (
+        source &&
+        (
+          source.indexOf('/storage.js') !== -1 ||
+          source.indexOf('/track_pixel.js') !== -1
+        )
+      ) {
+        const query = source.split('?')[1] || '';
+
+        if (query) {
+          const params = new URLSearchParams(query);
+          hm = params.get('hm');
+          if (hm) break;
+        }
+      }
+    }
+
+    if (hm) {
+      try {
+        sessionStorage.setItem('ams_hm', hm);
+      } catch (e) {}
+
+      try {
+        localStorage.setItem(
+          'ams_hm',
+          JSON.stringify({
+            v: hm,
+            ts: now()
+          })
+        );
+      } catch (e) {}
+    }
+  } catch (e) {}
+
+  // ============================================================
+  // HELPERS PUBLICOS DE DIAGNOSTICO
+  // ============================================================
+
+  window.__ams_get = getStored;
+
+  window.__ams_attribution_debug = function () {
+    const url = new URL(window.location.href);
+    const urlValues = {};
+    const storedValues = {};
+
+    for (let i = 0; i < ALL_KEYS.length; i++) {
+      const key = ALL_KEYS[i];
+      urlValues[key] = url.searchParams.get(key);
+      storedValues[key] = getStored(key);
+    }
+
+    return {
+      url: window.location.href,
+      landing_query: AMS_INITIAL_QUERY,
+      landing_primaries: AMS_INITIAL_PRIMARIES,
+      url_values: urlValues,
+      stored_values: storedValues,
+      current_session: readDurableJson(AMS_SESSION_KEY, AMS_DURABLE_TTL_MS),
+      protected_snapshot: readDurableJson(
+        PROTECTED_SNAPSHOT_KEY,
+        AMS_DURABLE_TTL_MS
+      ),
+      last_blocked_attempt: readJsonFromSession(LAST_BLOCKED_KEY),
+      pending_blocked_events: readBlockedQueue()
+    };
+  };
+
+  // Superficie de test. Aditiva, no altera comportamiento: expone helpers
+  // puros para el harness de static/_tests/attribution_tests.html.
+  window.__ams_test_helpers = {
+    PRIMARY_KEYS: PRIMARY_KEYS,
+    ALL_KEYS: ALL_KEYS,
+    normalizePrimaryForComparison: normalizePrimaryForComparison,
+    primariesAreEqual: primariesAreEqual,
+    truncateString: truncateString,
+    sanitizeUrlForTelemetry: sanitizeUrlForTelemetry,
+    buildBlockedDedupeKey: buildBlockedDedupeKey,
+    shouldEmitBlockedEvent: shouldEmitBlockedEvent,
+    primaryCameFromNavigation: primaryCameFromNavigation,
+    getIncomingPrimary: function (search) {
+      return getIncomingPrimary(new URLSearchParams(search || ''));
+    },
+    landingPrimaries: function () {
+      return AMS_INITIAL_PRIMARIES;
+    }
+  };
+})();

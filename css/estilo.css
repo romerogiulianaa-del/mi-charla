@@ -1,125 +1,480 @@
-/* =========================================================
-   1 · LA PALETA DEL CURSO
-   Se escribe UNA sola vez, acá arriba. Todo lo demás usa var().
-   ========================================================= */
-:root { /*guarda los colores de la variable*/
-  /* Los seis colores de la identidad del CET */
-  --plateado:   #a9a9a9;
-  --plateado-os:   #8A8A8A;
-  --plate:      #d933d9;
-  --pp:  #edb0da;
-  --azul-tec: #0A8BAA;
-  --rosaa:    #d933d9;
+:root {
+    /*guarda los colores de la variable*/
+    /* Los seis colores de la identidad del CET */
+    --plateado: #a9a9a9;
+    --plateado-os: #8A8A8A;
+    --plate: #d933d9;
+    --pp: #edb0da;
+    --azul-tec: #0A8BAA;
+    --rosaa: #d933d9;
 
-  /* Escala del violeta */
-  --fondo: #cf9ccf;
-  --violeta-800: #221F51;
-  --rosita: #590248;
-  --violeta-500: #4A4685;
-  --violeta-300: #df5ee6;
-  --violeta-200: #9B99C4;
-  --violeta-100: #C3C1DD;
-  --violeta-50:  #E0DFEE;
-  --negro:  #000007;
---gris:  #4d4c4c;
- 
+    /* Escala del violeta */
+    --fondo: #cf9ccf;
+    --violeta-800: #221F51;
+    --rosita: #590248;
+    --violeta-500: #4A4685;
+    --violeta-300: #df5ee6;
+    --violeta-200: #9B99C4;
+    --violeta-100: #C3C1DD;
+    --violeta-50: #E0DFEE;
+    --negro: #000007;
+    --gris: #6d6875;
+    --rosaaa: #860758;
+    --fusia: #65054a;
 
-  --texto:       #eb87c3;
-  --texto-suave: #edb0da;
-  --blanco:      #eb2121;
+    --texto: #eb87c3;
+    --texto-suave: #edb0da;
+    --blanco: #eb2121;
+
+    --e-1: .25rem;
+    --e-2: .5rem;
+    --e-3: 1rem;
+    --e-4: 1.5rem;
+    --e-5: 2rem;
+    --e-6: 3rem;
 }
 
 /* =========================================================
    2 · LA PÁGINA ENTERA
-   display:flex + justify-content:center centran la tarjeta
-   en pantalla sin usar márgenes a ojo.
    ========================================================= */
+
 body {
-  margin: 0; /*elimina el margen. puede ocupar hasta el borde de la pantalla*/
-  min-height: 100vh; /*altu
-  font-weight: 700;/ra maxima. el body ocupa toda la pantalla*/
-  display: flex;/*organizar  los elementos hijos del body. controla facilmente donde aparecen las tarjetas */
-  align-items: center;/*centra los elkemtentos en el eje vertical del flex. el eje principal pasa a estar vertical*/
-  justify-content: center;/*centra lso elemnetos en el eje principal. las tarjetas quedam centradas vertical*/
-  background: var(--fondo);/*establece el color del fondo. toda la pantalla tiene un color lila*/
-  font-family: "Poppins", "Segoe UI", Arial, sans-serif;/*fuente de letra*/
-  color: var(--texto);/*color de texto prederteminando en el body. los textos que no tenga color se quede con el color ese*/
+    margin: 0;
+    min-height: 100vh;
+    padding: 0;
+    align-items: center;
+    justify-content: center;
+    background: var(--fondo);
+    font-family: "Poppins", "Segoe UI", Arial, sans-serif;
+    color: var(--texto);
+    background-image: url(../asset/tiniiiiiiiiiiiiiiiii.jpg);
+    /*background-repeat: no-repeat;
+    background-size: cover;
+    background-position: top;*/
 }
 
 /* =========================================================
    3 · LA TARJETA
    ========================================================= */
+
 .tarjeta {
-  background: var(--negro);/*color del fondo que es negro*/
-  border-top: 15px solid var(--plateado-os);/*crea un borde solomente arriba, que es de color gris*/
-  border-radius: 12px;/*redondea las esuinas*/
-  padding: 2.5rem 2rem;/* tiene espacio adento de la tarjeta, el contenido no queda pegado al los bordes  */
-  text-align: center;/*centra horizontalmente el texto y elementos del texto*/
-  max-width: 400px;/*limita el maximo ancho de la tarjeta */
+    background: var(--negro);
+    border-top: 15px solid var(--plateado-os);
+    border-radius: 12px;
+    padding: 2.5rem 2rem;
+    text-align: center;
+    max-width: 400px;
 }
 
 /* =========================================================
    4 · CADA PARTE DE LA TARJETA
    ========================================================= */
-.logo {  /*define el ancho y el alto del logo*/
-  width: 200px; /*ancho*/
-  height: 200px;/*alto*/
-  object-fit: contain;/*hace q la imagen enre dentro de las dimisiones,el logo no aparece estirado */
+
+.logo {
+    width: 200px;
+    height: 200px;
+    object-fit: contain;
 }
 
 .curso {
-  margin: .75rem 0 0;/*agrega margen*/
-  font-size: .80rem;/*tamaño de texto*/
-  font-weight: 600;/*grosol de la letra*/
-  letter-spacing: .17em;/*aumenta el espacio entre letras*/
-  text-transform: uppercase;/*convierte el texto a mayuscula*/
-  color: var(--rosaa);/*cambia el color de texto*/
+    margin: .75rem 0 0;
+    font-size: .80rem;
+    font-weight: 600;
+    letter-spacing: .17em;
+    text-transform: uppercase;
+    color: var(--rosaa);
 }
 
 .nombre {
-  margin: .4rem 0 0;/*agerga el margen*/
-  font-size: 2.2rem;/*tamaño de texto*/
-  letter-spacing: -0.01em;/*reduce el espacio de letras*/
-  color: var(--plateado);/*color de la fuente */
+    margin: .4rem 0 0;
+    font-size: 2.2rem;
+    letter-spacing: -0.01em;
+    color: var(--plateado);
 }
 
 .tarjeta__frase {
-  margin: 1rem 0 0;/*agrega margen*/
-  font-size: 1.25rem;/*tamaño de texto*/
-  line-height: 1.55;/*controla la separacion vertical entre lineas */
-  color: var(--ritosa);/*cambia el color de texto*/
+    margin: 1rem 0 0;
+    font-size: 1.25rem;
+    line-height: 1.55;
+    color: var(--ritosa);
 }
 
 .autor {
-  margin: 1.25rem 0 0;/*agrega margen*/
-  font-size: .82rem;/*tamaño de texto*/
-  color: var(--texto-suave);/*cambia el color de texto*/
+    margin: 1.25rem 0 0;
+    font-size: .82rem;
+    color: var(--texto-suave);
 }
+
 /* Variante oscura: mismo bloque, otra combinación de la paleta */
+
 .oscura {
-  background: var(--gris); /*cambia el fondo de una tarjeta*/
-  border-top-color: var(--palte);/*borde superior de la tarjeta */
+    background: var(--gris);
+    border-top-color: var(--palte);
 }
 
 .pregunta {
-  margin: 0;/*agrega margen*/
-  font-size: .8rem;/*tamaño de texto*/
-  font-weight: 600;/*ancho de texto*/
-  letter-spacing: .14em;/*reduce el espacio de letras*/
-  text-transform: uppercase;/*pasa a mayuscula*/
-  color: var(--plate);/*cambia el color de texto*/
+    margin: 0;
+    font-size: .8rem;
+    font-weight: 600;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--plate);
 }
 
 .respuesta {
-  margin: .5rem 0 0;/*agrega margen*/
-  font-size: 1.4rem;/*tamaño de texto*/
-  font-weight: 700;/*ancho de texto*/
-  color: var(--pp);/*color de fondo*/
+    margin: .5rem 0 0;
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--pp);
 }
 
 /* Para que las dos tarjetas se apilen con un hueco entre ellas */
-body {
-  flex-direction: column;/*direccion de los elemntos*/
-  gap: 2rem;/*espacio entre elemntos*/
-  padding: 2rem 1rem;/* se adapta una imagen a su tamaños*/
+
+/* =========================================================
+   EL BOTÓN: por eso existen las pseudo-clases
+   ========================================================= */
+
+.tarjeta__boton {
+    display: inline-block;
+    margin-top: 2rem;
+    padding: .9rem 2rem;
+    border-radius: 999px;
+    background: var(--rosaaa);
+    color: var(--violeta-900);
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.tarjeta__boton:hover {
+    background: var(--negro);
+}
+
+.tarjeta__boton:active {
+    background: var(--ritosa);
+}
+
+/* Accesibilidad: el foco del teclado tiene que verse SIEMPRE */
+
+.tarjeta__boton:focus-visible {
+    outline: 3px solid #e220a4;
+    outline-offset: 3px;
+}
+
+/* =========================================================
+   LA FICHA DE TU IDEA
+   ========================================================= */
+
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+.ficha {
+    width: 300px;
+    padding: 2rem;
+    border: 2px solid var(--gris);
+    background: var(--rosaaa);
+}
+
+/* ¿Dice 300px? Fijate con el cursor: la caja mide 368px. */
+
+.ficha {
+    max-width: 520px;
+    margin: var(--e-9) auto;
+    padding: var(--e-5);
+    border: 1px solid var(--rosaa);
+    border-top: 6px solid var(--rosaaa);
+    border-radius: 12px;
+    background: var(--violeta-25);
+}
+
+.ficha__etiqueta {
+    margin: 2px;
+    font-size: .60rem;
+    letter-spacing: .20em;
+    text-transform: uppercase;
+    color: var(--fusia);
+}
+
+.ficha__titulo {
+    margin: var(--e-2) 0 var(--e-5);
+    font-size: 2rem;
+    line-height: 1.25;
+    color: var(--plateado-os);
+}
+
+.ficha__campo {
+    margin: var(--e-4) 0 var(--e-1);
+    font-size: .60rem;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--rosita);
+}
+
+.ficha__texto {
+    margin: 0;
+    line-height: 2.26;
+    color: var(--pp);
+}
+
+/* las etiquetas: display inline-flex las deja como píldoras */
+
+.ficha__tags {
+    margin: var(--e-5) 0 0;
+    padding: 0;
+    display: flex;
+    gap: var(--e-2);
+    list-style: none;
+}
+
+.ficha__tags li {
+    padding: var(--e-1) var(--e-3);
+    border-radius: 999px;
+    background: var(--plateado-os);
+    color: var(--rosita);
+    font-size: .8rem;
+}
+
+.ficha {
+    background: var(--negro);
+}
+
+/*ideaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa*/
+
+#iidea {
+    background-image: none;
+    /*background-color: rgb(61, 61, 61);
+    background: linear-gradient(to right, rgb(54, 54, 54), rgb(134, 134, 137));*/
+    margin: 0;
+    min-height: 100vh;
+    background-color: #f2f2f2;
+    border-radius: 30px;
+}
+
+.container {
+    background-color: #D99AAB;
+    width: 1000px;
+    margin: 0 auto;
+    display: flex;
+    gap: 25px;
+    flex-wrap: wrap;
+    justify-content: center;
+    padding: 10px;
+}
+
+.idea__imagen img {
+    width: 150px;
+    height: 150px;
+    border-radius: 50%;
+    border: 7px solid #9f7885;
+}
+
+/*.imagenesss{
+display: flex;
+justify-content: center;
+}*/
+
+.ideas {
+    background-color: #fcfcfc;
+    width: 360px;
+    border: 3px solid rgb(145, 145, 145);
+    text-align: center;
+    padding: 30px;
+    border-radius: 60px;
+}
+
+.idea__enlace {
+    color: rgb(236, 146, 231);
+    background-color: rgb(81, 81, 82);
+    padding: .3rem 1,9rem;
+    margin-top: 3px;
+    display: inline-flex;
+    border-radius: 190px;
+    outline-offset: 100px;
+    font-size: larger;
+    text-decoration: double;
+}
+
+.idea__enlace:active {
+    background: var(--ritosa);
+}
+
+.idea__enlace:focus-visible {
+    outline-offset: 3px;
+}
+
+.idea__enlace:hover {
+    background: var(--negro);
+}
+
+.idea__titulo {
+    font-size: 3.2rem;
+    color: #0D0D0D;
+}
+
+.idea__parrafo {
+    font-size: 25px;
+    color: #000000;
+    font-family: 'Gill Sans', 'Gill Sans MT', Calibri, 'Trebuchet MS', sans-serif;
+}
+
+.idea__tags {
+    margin: var(--e-5) 0 0;
+    padding: 0;
+    display: flex;
+    gap: var(--e-2);
+    list-style: none;
+}
+
+.idea__tags li {
+    padding: var(--e-1) var(--e-3);
+    border-radius: 999px;
+    background: rgb(81, 81, 82);
+    color: rgb(236, 146, 231);
+    font-size: .8rem;
+}
+
+.idea__tags:active {
+    background: var(--ritosa);
+}
+
+.idea__tags:focus-visible {
+    outline-offset: 3px;
+}
+
+h4 {
+    font-family: 'Anton', sans-serif;
+    font-size: 70px;
+    font-weight: 900;
+    color: #040404;
+
+    text-shadow:
+        2px 2px 0 #969596,
+        3px 3px 0 #b0aeb0,
+        4px 4px 0 #757575,
+        5px 5px 0 #949294,
+        6px 6px 0 #989798,
+        7px 7px 10px rgba(0, 0, 0, 0.721);
+
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.container-header {
+    background: #ffc2e2;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.img-logo {
+    width: 150px;
+    height: 150px;
+    padding: 10px;
+    border-radius: 30px;
+}
+
+.container-header nav {
+    padding: 10px;
+    margin: auto;
+}
+
+.container-header nav ul {
+    list-style: none;
+    display: flex;
+    gap: 7px;
+}
+
+.container-header a {
+    text-decoration: none;
+    text-transform: uppercase;
+    color: #590248;
+    font-weight: 800;
+    font-size: 1.2rem;
+    transition: background-color 0.5s ease;
+}
+
+:root {
+    --violeta: var(--fusia);
+}
+
+.container-header a:hover {
+    background-color: #f5f4f8;
+    padding: 5px;
+    border-radius: 8px;
+}
+
+.footer-top {
+    justify-content: space-between;
+    display: flex;
+}
+
+.footer-top a,
+.footer-botton a {
+    color: #f2f2f2;
+    text-decoration: none;
+}
+
+.puntito h5 {
+    width: 12px;
+    height: 12px;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    font-size: 20px;
+    display: inline;
+    color: #D99AAB;
+    padding: 10px;
+    font-size: x-large;
+}
+
+.footer-botton {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 20px;
+    padding: 12rem 25rem;
+    border: 2px solid #7d7d7d;
+    border-radius: 10px;
+    width: 12px;
+    height: 12px;
+}
+
+.footer {
+    background-color: #0D0D0D;
+    border-width: 0;
+    margin: auto;
+    padding: 10px;
+}
+
+.puntito ul {
+    list-style: none;
+    padding-left: 0;
+}
+
+.puntito a {
+    font-size: larger;
+    font-family: 'Gill Sans', 'Gill Sans MT', Calibri, 'Trebuchet MS', sans-serif;
+}
+
+.footer-booton-img {
+    width: 50px;
+    height: 25px;
+}
+
+.final {
+    width: auto;
+    height: auto;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    font-size: 20px;
+    display: block;
+    color: #D99AAB;
+    padding: 10px;
+}
+.h5,a{
+width: 12px;
+    height: 12px;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    font-size: 20px;
+    display: inline;
+    color: #D99AAB;
+    padding: 10px;
+    font-size: x-large;
 }

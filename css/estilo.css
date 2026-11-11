@@ -52,6 +52,16 @@ body {
     background-size: cover;
     background-position: top;*/
 }
+.divv{
+  display: flex;
+  flex-direction: center;
+ 
+    flex-direction: column;   /* Ordena elementos verticalmente*/
+    justify-content: center; /* Centra verticalmente */
+    align-items: center;     /* Centra horizontalmente */
+    text-align: center; 
+
+}
 
 /* =========================================================
    3 · LA TARJETA
@@ -135,14 +145,16 @@ body {
    ========================================================= */
 
 .tarjeta__boton {
-    display: inline-block;
+
     margin-top: 2rem;
     padding: .9rem 2rem;
-    border-radius: 999px;
+    border-radius: 10%;
     background: var(--rosaaa);
     color: var(--violeta-900);
     font-weight: 700;
     text-decoration: none;
+     font-size: 20px;
+  padding: 15px 30px;
 }
 
 .tarjeta__boton:hover {
@@ -169,16 +181,12 @@ body {
     box-sizing: border-box;
 }
 
-.ficha {
-    width: 300px;
-    padding: 2rem;
-    border: 2px solid var(--gris);
-    background: var(--rosaaa);
-}
+
 
 /* ¿Dice 300px? Fijate con el cursor: la caja mide 368px. */
 
 .ficha {
+  width: 600px;
     max-width: 520px;
     margin: var(--e-9) auto;
     padding: var(--e-5);
@@ -190,10 +198,10 @@ body {
 
 .ficha__etiqueta {
     margin: 2px;
-    font-size: .60rem;
+    font-size: .90rem;
     letter-spacing: .20em;
     text-transform: uppercase;
-    color: var(--fusia);
+    color: #5c054b;
 }
 
 .ficha__titulo {
@@ -205,13 +213,14 @@ body {
 
 .ficha__campo {
     margin: var(--e-4) 0 var(--e-1);
-    font-size: .60rem;
+    font-size: .90rem;
     letter-spacing: .12em;
     text-transform: uppercase;
-    color: var(--rosita);
+    color: #b80895;
 }
 
 .ficha__texto {
+  font-size: large;
     margin: 0;
     line-height: 2.26;
     color: var(--pp);
@@ -288,7 +297,7 @@ justify-content: center;
     background-color: rgb(81, 81, 82);
     padding: .3rem 1,9rem;
     margin-top: 3px;
-    display: inline-flex;
+  
     border-radius: 190px;
     outline-offset: 100px;
     font-size: larger;
@@ -478,3 +487,16 @@ width: 12px;
     padding: 10px;
     font-size: x-large;
 }
+.mate{
+
+width: auto;
+    height: auto;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    font-size: 40px;
+    display: block;
+    color: #D99AAB;
+    padding: 10px;
+    display: flex;
+}
+
+

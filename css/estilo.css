@@ -42,8 +42,6 @@ body {
     margin: 0;
     min-height: 100vh;
     padding: 0;
-    align-items: center;
-    justify-content: center;
     background: var(--fondo);
     font-family: "Poppins", "Segoe UI", Arial, sans-serif;
     color: var(--texto);
@@ -52,14 +50,18 @@ body {
     background-size: cover;
     background-position: top;*/
 }
-.divv{
-  display: flex;
-  flex-direction: center;
- 
-    flex-direction: column;   /* Ordena elementos verticalmente*/
-    justify-content: center; /* Centra verticalmente */
-    align-items: center;     /* Centra horizontalmente */
-    text-align: center; 
+
+.divv {
+    display: flex;
+    flex-direction: center;
+
+    flex-direction: column;
+    /* Ordena elementos verticalmente*/
+    justify-content: center;
+    /* Centra verticalmente */
+    align-items: center;
+    /* Centra horizontalmente */
+    text-align: center;
 
 }
 
@@ -68,7 +70,7 @@ body {
    ========================================================= */
 
 .tarjeta {
-    background: var(--negro);
+    background: #f7cce636;
     border-top: 15px solid var(--plateado-os);
     border-radius: 12px;
     padding: 2.5rem 2rem;
@@ -88,7 +90,7 @@ body {
 
 .curso {
     margin: .75rem 0 0;
-    font-size: .80rem;
+    font-size: .90rem;
     font-weight: 600;
     letter-spacing: .17em;
     text-transform: uppercase;
@@ -143,18 +145,17 @@ body {
 /* =========================================================
    EL BOTÓN: por eso existen las pseudo-clases
    ========================================================= */
-
 .tarjeta__boton {
-
-    margin-top: 2rem;
-    padding: .9rem 2rem;
     border-radius: 10%;
     background: var(--rosaaa);
     color: var(--violeta-900);
     font-weight: 700;
     text-decoration: none;
-     font-size: 20px;
-  padding: 15px 30px;
+    font-size: 20px;
+    padding: 15px 30px;
+}
+.mas-inf{
+    padding: 23%;
 }
 
 .tarjeta__boton:hover {
@@ -186,7 +187,7 @@ body {
 /* ¿Dice 300px? Fijate con el cursor: la caja mide 368px. */
 
 .ficha {
-  width: 600px;
+    width: 600px;
     max-width: 520px;
     margin: var(--e-9) auto;
     padding: var(--e-5);
@@ -220,7 +221,7 @@ body {
 }
 
 .ficha__texto {
-  font-size: large;
+    font-size: large;
     margin: 0;
     line-height: 2.26;
     color: var(--pp);
@@ -295,9 +296,9 @@ justify-content: center;
 .idea__enlace {
     color: rgb(236, 146, 231);
     background-color: rgb(81, 81, 82);
-    padding: .3rem 1,9rem;
+    padding: .3rem 1, 9rem;
     margin-top: 3px;
-  
+
     border-radius: 190px;
     outline-offset: 100px;
     font-size: larger;
@@ -477,9 +478,9 @@ h4 {
     color: #D99AAB;
     padding: 10px;
 }
-.h5,a{
-width: 12px;
-    height: 12px;
+
+.h5,
+a {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     font-size: 20px;
     display: inline;
@@ -487,16 +488,39 @@ width: 12px;
     padding: 10px;
     font-size: x-large;
 }
-.mate{
 
-width: auto;
-    height: auto;
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    font-size: 40px;
-    display: block;
-    color: #D99AAB;
-    padding: 10px;
+.mate {
+    font-family: 'Anton', sans-serif;
+    font-size: 70px;
+    font-weight: 900;
+    color: #040404;
+
+    text-shadow:
+        2px 2px 0 #dedede,
+        3px 3px 0 #b0aeb0,
+        4px 4px 0 #757575,
+        5px 5px 0 #949294,
+        6px 6px 0 #989798,
+        7px 7px 10px rgba(0, 0, 0, 0.721);
+
     display: flex;
+    justify-content: center;
+    align-items: center;
 }
 
-
+.texto-m {
+    max-width: 1200px;
+    margin: 15px auto;
+    padding: 20px;
+    text-align: center;
+    font-size: 20px;
+    line-height: 1.6;
+    color: #570146;
+}
+.seccion-mate{
+    max-width: 1100px;
+    margin: 30px auto;
+    padding: 40px;
+    background-color: #f5d8eba8;
+    border-radius: 10px;
+}

@@ -9,6 +9,10 @@
     <link rel="stylesheet" href="css/estilo.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
+<div class="contador-tiempo">
+    <span>⏱️ Tiempo en la página:</span>
+    <strong id="tiempo">00:00</strong>
+</div>
 
 <body id="iidea">
 
@@ -18,7 +22,7 @@
         </a>
         <nav>
             <ul>
-                <li><a href="./index.html">unicio</a></li>
+                <li><a href="./index.html">inicio</a></li>
                 <li><a href="./archivo.html">mis idea</a></li>
                 <li><a href="./ideas.html"> mate</a></li>
             </ul>
@@ -48,10 +52,10 @@
 
 
                 <ul class="idea__tags">
-                    <li>Charlas <a href="./charlas.html"></a></li>
+                    <li> <a href="./charlas.html">Charlas</a></li>
 
-                    <li>momentos <a href="./momentos.html"></a></li>
-                    <li>Hacer amistad <a href="./amigis.html"></a></li>
+                    <li> <a href="./momentos.html">momentos</a></li>
+                    <li> <a href="./amigis.html">amistad</a></li>
                 </ul>
 
             </article>
@@ -178,23 +182,41 @@
 
         </div>
 
+        <!-- LINEA DIVISORIA -->
+        <hr class="linea-footer">
+
+        <!-- PARTE INFERIOR -->
         <div class="final">
 
             <section class="puntito">
-                <h5><strong>El mate nos une</strong></h5>
-                <a href="">Tradición</a>
+
+                <h5><strong>🧉 El mate nos une</strong></h5>
+
+                <p>
+                    Una charla, un mate y un momento para compartir.
+                </p>
+
+                <a href="" class="a-fou">nuestra tradición</a>
+
             </section>
 
+            <!-- BOTON VOLVER ARRIBA -->
+            <button class="btn-mate" onclick="window.scrollTo({top: 0, behavior: 'smooth'})">
+                Volver arriba
+            </button>
+
+            <!-- DERECHOS RESERVADOS -->
+            <p class="finalfou">
+                2026 - Mate, charla y tradición
+            </p>
+
         </div>
-
-        <section class="footer-booton-cards">
-
-
-
-        </section>
 
     </footer>
 
 </body>
+
+
+
 
 </html>

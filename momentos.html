@@ -7,6 +7,10 @@
     <title>Document</title>
     <link rel="stylesheet" href="css/estilo.css">
 </head>
+<div class="contador-tiempo">
+    <span>⏱️ Tiempo en la página:</span>
+    <strong id="tiempo">00:00</strong>
+</div>
 
 <body id="iidea">
     <header class="container-header">
@@ -15,29 +19,31 @@
         </a>
         <nav>
             <ul>
-                <li><a href="./index.html">unicio</a></li>
+                <li><a href="./index.html">inicio</a></li>
                 <li><a href="./archivo.html">mis idea</a></li>
                 <li><a href="./ideas.html"> mate</a></li>
             </ul>
         </nav>
 
     </header>
+     <h1 class="mate"><strong>Momentos</strong></h1>
     <section class="seccion-mate">
 
-        <h1 class="mate"><strong>Momentos</strong></h1>
+       
         <p class="texto-m">
-        <p><strong>El mate siempre está presente en distintos momentos, ya sea cuando nos juntamos con amigos, estamos
+            <strong>El mate siempre está presente en distintos momentos, ya sea cuando nos juntamos con amigos, estamos
                 en familia o simplemente queremos pasar un rato. A veces, mientras tomamos mates, surgen charlas, risas
-                y anécdotas que hacen que cualquier momento se vuelva especial.</strong></p>
+                y anécdotas que hacen que cualquier momento se vuelva especial.</strong>
+        </p>
     </section>
 
     </main>
     <footer class="footer">
+                <h5><strong>Unión</strong></h5>
 
         <div class="footer-top">
 
             <section class="puntito">
-                <h5><strong>Unión</strong></h5>
                 <ul>
                     <li><a href="">Nos acerca más</a></li>
                     <li><a href="">Demuestra cariño</a></li>
@@ -73,35 +79,39 @@
                     <li><a href="">De generación a generación</a></li>
                 </ul>
 
-                <div>
-                    <a href=""><i class="fa-brands fa-facebook-f"></i></a>
-                    <a href=""><i class="fa-brands fa-tiktok"></i></a>
-                    <a href=""><i class="fa-brands fa-youtube"></i></a>
-                    <a href=""><i class="fa-brands fa-instagram"></i></a>
-                </div>
-
             </section>
 
         </div>
 
+        <!-- LINEA DIVISORIA -->
+        <hr class="linea-footer">
+
+        <!-- PARTE INFERIOR -->
         <div class="final">
 
             <section class="puntito">
-                <h5><strong>El mate nos une</strong></h5>
-                <a href="">Tradición</a>
+
+                <h5><strong>🧉 El mate nos une</strong></h5>
+
+                <p>
+                    Una charla, un mate y un momento para compartir.
+                </p>
+
+                <a href="" class="a-fou">nuestra tradición</a>
+
             </section>
 
+            <!-- BOTON VOLVER ARRIBA -->
+            <button class="btn-mate" onclick="window.scrollTo({top: 0, behavior: 'smooth'})">
+                Volver arriba
+            </button>
+
+            <!-- DERECHOS RESERVADOS -->
+            <p class="finalfou">
+                2026 - Mate, charla y tradición
+            </p>
+
         </div>
-
-        <section class="footer-booton-cards">
-
-
-
-        </section>
-
-    </footer>
-
-    </main>
 </body>
 
 </html>

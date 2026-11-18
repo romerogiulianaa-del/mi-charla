@@ -1,6 +1,10 @@
+
+/* =========================================================
+   1. VARIABLES: COLORES Y ESPACIOS
+   ========================================================= */
+
 :root {
-    /*guarda los colores de la variable*/
-    /* Los seis colores de la identidad del CET */
+    /* Guarda los colores para reutilizarlos en toda la página */
     --plateado: #a9a9a9;
     --plateado-os: #8A8A8A;
     --plate: #d933d9;
@@ -8,7 +12,7 @@
     --azul-tec: #0A8BAA;
     --rosaa: #d933d9;
 
-    /* Escala del violeta */
+    /* Escala de colores para fondos y textos */
     --fondo: #cf9ccf;
     --violeta-800: #221F51;
     --rosita: #590248;
@@ -21,343 +25,363 @@
     --gris: #6d6875;
     --rosaaa: #860758;
     --fusia: #65054a;
-
     --texto: #eb87c3;
     --texto-suave: #edb0da;
     --blanco: #eb2121;
 
+    /* Variables para mantener espacios iguales */
     --e-1: .25rem;
     --e-2: .5rem;
     --e-3: 1rem;
     --e-4: 1.5rem;
     --e-5: 2rem;
     --e-6: 3rem;
+
+    /* Crea otra variable utilizando un color ya existente */
+    --violeta: var(--fusia);
 }
 
 /* =========================================================
-   2 · LA PÁGINA ENTERA
+   2. PÁGINA ENTERA
    ========================================================= */
 
 body {
-    margin: 0;
-    min-height: 100vh;
-    padding: 0;
-    background: var(--fondo);
-    font-family: "Poppins", "Segoe UI", Arial, sans-serif;
-    color: var(--texto);
-    background-image: url(../asset/tiniiiiiiiiiiiiiiiii.jpg);
-    /*background-repeat: no-repeat;
-    background-size: cover;
-    background-position: top;*/
-}
-
-.divv {
-    display: flex;
-    flex-direction: center;
-
-    flex-direction: column;
-    /* Ordena elementos verticalmente*/
-    justify-content: center;
-    /* Centra verticalmente */
-    align-items: center;
-    /* Centra horizontalmente */
-    text-align: center;
-
+    margin: 0; /* Elimina el margen exterior */
+    min-height: 100vh; /* Hace que ocupe como mínimo toda la pantalla */
+    padding: 0; /* Elimina el espacio interior */
+    background: var(--fondo); /* Establece el color de fondo */
+    font-family: "Poppins", "Segoe UI", Arial, sans-serif; /* Define el tipo de letra */
+    color: var(--texto); /* Define el color general del texto */
+    background-image: url(../asset/tiniiiiiiiiiiiiiiiii.jpg); /* Coloca una imagen de fondo */
 }
 
 /* =========================================================
-   3 · LA TARJETA
+   3. CONTENEDOR CENTRADO
+   ========================================================= */
+
+.divv {
+    display: flex; /* Activa el sistema Flexbox */
+    flex-direction: column; /* Ordena los elementos verticalmente */
+    justify-content: center; /* Centra los elementos en el eje principal */
+    align-items: center; /* Centra los elementos horizontalmente */
+    text-align: center; /* Centra el texto */
+}
+
+/* =========================================================
+   4. TARJETA
    ========================================================= */
 
 .tarjeta {
-    background: #f7cce636;
-    border-top: 15px solid var(--plateado-os);
-    border-radius: 12px;
-    padding: 2.5rem 2rem;
-    text-align: center;
-    max-width: 400px;
+    background: #f7cce636; /* Establece un fondo con transparencia */
+    border-top: 15px solid var(--negro); /* Agrega un borde negro arriba */
+    border-radius: 12px; /* Redondea las esquinas */
+    padding: 2.5rem 2rem; /* Agrega espacio interior */
+    text-align: center; /* Centra el contenido */
+    max-width: 400px; /* Establece el ancho máximo */
 }
 
 /* =========================================================
-   4 · CADA PARTE DE LA TARJETA
+   5. PARTES DE LA TARJETA
    ========================================================= */
 
 .logo {
-    width: 200px;
-    height: 200px;
-    object-fit: contain;
+    width: 200px; /* Define el ancho de la imagen */
+    height: 200px; /* Define la altura de la imagen */
+    object-fit: contain; /* Mantiene la imagen completa sin deformarla */
 }
 
 .curso {
-    margin: .75rem 0 0;
-    font-size: .90rem;
-    font-weight: 600;
-    letter-spacing: .17em;
-    text-transform: uppercase;
-    color: var(--rosaa);
+    margin: .75rem 0 0; /* Agrega espacio exterior arriba */
+    font-size: .90rem; /* Define el tamaño de la letra */
+    font-weight: 600; /* Hace que la letra sea más gruesa */
+    letter-spacing: .17em; /* Separa las letras */
+    text-transform: uppercase; /* Convierte el texto en mayúsculas */
+    color: var(--rosaa); /* Establece el color */
 }
 
 .nombre {
-    margin: .4rem 0 0;
-    font-size: 2.2rem;
-    letter-spacing: -0.01em;
-    color: var(--plateado);
+    margin: .4rem 0 0; /* Agrega espacio arriba */
+    font-size: 2.2rem; /* Define el tamaño del nombre */
+    letter-spacing: -0.01em; /* Ajusta la separación entre letras */
+    color: var(--plateado); /* Cambia el color del nombre */
 }
 
 .tarjeta__frase {
-    margin: 1rem 0 0;
-    font-size: 1.25rem;
-    line-height: 1.55;
-    color: var(--ritosa);
+    margin: 1rem 0 0; /* Separa la frase de lo anterior */
+    font-size: 1.25rem; /* Define el tamaño del texto */
+    line-height: 1.55; /* Establece la separación entre líneas */
+    color: var(--texto-suave); /* Establece el color de la frase */
 }
 
 .autor {
-    margin: 1.25rem 0 0;
-    font-size: .82rem;
-    color: var(--texto-suave);
+    margin: 1.25rem 0 0; /* Agrega espacio arriba */
+    font-size: 20px; /* Define el tamaño de la letra */
+    color: #696368; /* Establece el color del autor */
 }
 
-/* Variante oscura: mismo bloque, otra combinación de la paleta */
+/* Variante oscura de la tarjeta */
 
 .oscura {
-    background: var(--gris);
-    border-top-color: var(--palte);
+    background: var(--negro); /* Coloca un fondo negro */
+    border-top-color: var(--plate); /* Cambia el color del borde superior */
 }
 
+/* =========================================================
+   6. PREGUNTAS Y RESPUESTAS
+   ========================================================= */
+
 .pregunta {
-    margin: 0;
-    font-size: .8rem;
-    font-weight: 600;
-    letter-spacing: .14em;
-    text-transform: uppercase;
-    color: var(--plate);
+    margin: 0; /* Elimina el margen */
+    font-size: .8rem; /* Define el tamaño de la letra */
+    font-weight: 600; /* Hace la letra más gruesa */
+    letter-spacing: .14em; /* Separa las letras */
+    text-transform: uppercase; /* Convierte el texto en mayúsculas */
+    color: var(--plate); /* Establece el color */
 }
 
 .respuesta {
-    margin: .5rem 0 0;
-    font-size: 1.4rem;
-    font-weight: 700;
-    color: var(--pp);
+    margin: .5rem 0 0; /* Agrega espacio arriba */
+    font-size: 1.4rem; /* Define el tamaño del texto */
+    font-weight: 700; /* Coloca el texto en negrita */
+    color: var(--pp); /* Establece el color */
 }
-
-/* Para que las dos tarjetas se apilen con un hueco entre ellas */
 
 /* =========================================================
-   EL BOTÓN: por eso existen las pseudo-clases
+   7. BOTÓN DE LA TARJETA
    ========================================================= */
+
 .tarjeta__boton {
-    border-radius: 10%;
-    background: var(--rosaaa);
-    color: var(--violeta-900);
-    font-weight: 700;
-    text-decoration: none;
-    font-size: 20px;
-    padding: 15px 30px;
+    border-radius: 10%; /* Redondea las esquinas */
+    background: var(--rosaaa); /* Establece el fondo */
+    color: var(--violeta); /* Establece el color del texto */
+    font-weight: 700; /* Coloca el texto en negrita */
+    text-decoration: none; /* Quita el subrayado del enlace */
+    font-size: 20px; /* Define el tamaño de la letra */
+    padding: 15px 30px; /* Agrega espacio interior */
 }
-.mas-inf{
-    padding: 23%;
+
+.mas-inf {
+    padding: 23%; /* Agrega espacio interior */
 }
+
+/* Cambia el fondo cuando pasamos el mouse */
 
 .tarjeta__boton:hover {
     background: var(--negro);
 }
 
+/* Cambia el fondo mientras presionamos el botón */
+
 .tarjeta__boton:active {
-    background: var(--ritosa);
+    background: var(--texto-suave);
 }
 
-/* Accesibilidad: el foco del teclado tiene que verse SIEMPRE */
+/* Muestra un contorno al seleccionar con el teclado */
 
 .tarjeta__boton:focus-visible {
-    outline: 3px solid #e220a4;
-    outline-offset: 3px;
+    outline: 3px solid #e220a4; /* Dibuja un contorno */
+    outline-offset: 3px; /* Separa el contorno del botón */
 }
 
 /* =========================================================
-   LA FICHA DE TU IDEA
+   8. FICHA DE TU IDEA
    ========================================================= */
 
+/* Se aplica a todos los elementos y sus pseudo-elementos */
+
+*,
 *::before,
 *::after {
-    box-sizing: border-box;
+    box-sizing: border-box; /* Incluye padding y borde en las dimensiones */
 }
 
-
-
-/* ¿Dice 300px? Fijate con el cursor: la caja mide 368px. */
-
 .ficha {
-    width: 600px;
-    max-width: 520px;
-    margin: var(--e-9) auto;
-    padding: var(--e-5);
-    border: 1px solid var(--rosaa);
-    border-top: 6px solid var(--rosaaa);
-    border-radius: 12px;
-    background: var(--violeta-25);
+    width: 100%; /* Permite ocupar el espacio disponible */
+    max-width: 520px; /* Establece el ancho máximo */
+    margin: 2rem auto; /* Centra la caja y agrega espacio arriba y abajo */
+    padding: var(--e-5); /* Agrega espacio interior */
+    border: 1px solid var(--negro); /* Agrega un borde fino */
+    border-top: 6px solid var(--negro); /* Agrega un borde superior más grueso */
+    border-radius: 12px; /* Redondea las esquinas */
+    background: #f7cce636; /* Establece el color de fondo */
 }
 
 .ficha__etiqueta {
-    margin: 2px;
-    font-size: .90rem;
-    letter-spacing: .20em;
-    text-transform: uppercase;
-    color: #5c054b;
+    margin: 2px; /* Agrega un pequeño margen */
+    font-size: .90rem; /* Define el tamaño de la letra */
+    letter-spacing: .20em; /* Separa las letras */
+    text-transform: uppercase; /* Convierte el texto en mayúsculas */
+    color: #5c054b; /* Establece el color */
 }
 
 .ficha__titulo {
-    margin: var(--e-2) 0 var(--e-5);
-    font-size: 2rem;
-    line-height: 1.25;
-    color: var(--plateado-os);
+    margin: var(--e-2) 0 var(--e-5); /* Agrega espacio arriba y abajo */
+    font-size: 2rem; /* Define el tamaño del título */
+    line-height: 1.25; /* Controla la separación entre líneas */
+    color: var(--plateado-os); /* Establece el color */
 }
 
 .ficha__campo {
-    margin: var(--e-4) 0 var(--e-1);
-    font-size: .90rem;
-    letter-spacing: .12em;
-    text-transform: uppercase;
-    color: #b80895;
+    margin: var(--e-4) 0 var(--e-1); /* Separa los campos */
+    font-size: .90rem; /* Define el tamaño de la letra */
+    letter-spacing: .12em; /* Separa las letras */
+    text-transform: uppercase; /* Convierte el texto en mayúsculas */
+    color: #b80895; /* Establece el color */
 }
 
 .ficha__texto {
-    font-size: large;
-    margin: 0;
-    line-height: 2.26;
-    color: var(--pp);
+    font-size: large; /* Establece un tamaño de letra grande */
+    margin: 0; /* Elimina el margen */
+    line-height: 2.26; /* Separa las líneas del texto */
+    color: var(--negro); /* Establece el color */
 }
 
-/* las etiquetas: display inline-flex las deja como píldoras */
+/* Las etiquetas se muestran como píldoras */
 
 .ficha__tags {
-    margin: var(--e-5) 0 0;
-    padding: 0;
-    display: flex;
-    gap: var(--e-2);
-    list-style: none;
+    margin: var(--e-5) 0 0; /* Agrega espacio arriba */
+    padding: 0; /* Elimina el espacio interior */
+    display: flex; /* Activa Flexbox */
+    gap: var(--e-2); /* Separa las etiquetas */
+    list-style: none; /* Quita los puntos de la lista */
 }
 
 .ficha__tags li {
-    padding: var(--e-1) var(--e-3);
-    border-radius: 999px;
-    background: var(--plateado-os);
-    color: var(--rosita);
-    font-size: .8rem;
+    padding: var(--e-1) var(--e-3); /* Agrega espacio interior */
+    border-radius: 999px; /* Redondea las etiquetas */
+    background: var(--negro); /* Coloca un fondo negro */
+    color: #b80895; /* Cambia el color del texto */
+    font-size: 15px; /* Define el tamaño de la letra */
 }
 
-.ficha {
-    background: var(--negro);
-}
-
-/*ideaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa*/
+/* =========================================================
+   9. PÁGINA DE IDEAS
+   ========================================================= */
 
 #iidea {
-    background-image: none;
-    /*background-color: rgb(61, 61, 61);
-    background: linear-gradient(to right, rgb(54, 54, 54), rgb(134, 134, 137));*/
-    margin: 0;
-    min-height: 100vh;
-    background-color: #f2f2f2;
-    border-radius: 30px;
+    background-image: none; /* Elimina la imagen de fondo */
+    margin: 0; /* Elimina el margen exterior */
+    min-height: 100vh; /* Ocupa como mínimo toda la pantalla */
+    background-color: #f2f2f2; /* Establece un fondo gris claro */
+    border-radius: 30px; /* Redondea las esquinas */
 }
+
+/* Contenedor general de las ideas */
 
 .container {
-    background-color: #D99AAB;
-    width: 1000px;
-    margin: 0 auto;
-    display: flex;
-    gap: 25px;
-    flex-wrap: wrap;
-    justify-content: center;
-    padding: 10px;
+    background-color: #D99AAB; /* Establece el color de fondo */
+    width: 1000px; /* Define el ancho */
+    max-width: 100%; /* Evita que supere el ancho de la pantalla */
+    margin: 0 auto; /* Centra el contenedor */
+    display: flex; /* Activa Flexbox */
+    gap: 25px; /* Separa los elementos */
+    flex-wrap: wrap; /* Permite que los elementos bajen a otra fila */
+    justify-content: center; /* Centra los elementos */
+    padding: 10px; /* Agrega espacio interior */
 }
+
+/* Imagen de cada idea */
 
 .idea__imagen img {
-    width: 150px;
-    height: 150px;
-    border-radius: 50%;
-    border: 7px solid #9f7885;
+    width: 150px; /* Define el ancho */
+    height: 150px; /* Define la altura */
+    border-radius: 50%; /* Convierte la imagen en un círculo */
+    border: 7px solid #9f7885; /* Agrega un borde */
 }
 
-/*.imagenesss{
-display: flex;
-justify-content: center;
-}*/
+/* =========================================================
+   10. CAJAS DE IDEAS
+   ========================================================= */
 
 .ideas {
-    background-color: #fcfcfc;
-    width: 360px;
-    border: 3px solid rgb(145, 145, 145);
-    text-align: center;
-    padding: 30px;
-    border-radius: 60px;
+    background-color: #fcfcfc; /* Establece un fondo blanco */
+    width: 360px; /* Define el ancho */
+    border: 3px solid rgb(145, 145, 145); /* Agrega un borde gris */
+    text-align: center; /* Centra el texto */
+    padding: 30px; /* Agrega espacio interior */
+    border-radius: 60px; /* Redondea las esquinas */
 }
+
+/* Enlace de cada idea */
 
 .idea__enlace {
-    color: rgb(236, 146, 231);
-    background-color: rgb(81, 81, 82);
-    padding: .3rem 1, 9rem;
-    margin-top: 3px;
-
-    border-radius: 190px;
-    outline-offset: 100px;
-    font-size: larger;
-    text-decoration: double;
+    color: rgb(236, 146, 231); /* Cambia el color del texto */
+    background-color: rgb(81, 81, 82); /* Coloca un fondo gris */
+    padding: var(--e-3); /* Agrega espacio interior */
+    margin-top: 3px; /* Agrega margen arriba */
+    border-radius: 190px; /* Redondea las esquinas */
+    outline-offset: 3px; /* Separa el contorno */
+    font-size: larger; /* Aumenta el tamaño de la letra */
+    text-decoration: none; /* Quita el subrayado */
 }
+
+/* Cambia el fondo mientras se presiona */
 
 .idea__enlace:active {
-    background: var(--ritosa);
+    background: var(--texto-suave);
 }
 
+/* Estilo cuando el enlace recibe el foco del teclado */
+
 .idea__enlace:focus-visible {
-    outline-offset: 3px;
+    outline: 3px solid #e220a4; /* Muestra un contorno */
+    outline-offset: 3px; /* Separa el contorno */
 }
+
+/* Cambia el fondo al pasar el mouse */
 
 .idea__enlace:hover {
     background: var(--negro);
 }
 
+/* Título de las ideas */
+
 .idea__titulo {
-    font-size: 3.2rem;
-    color: #0D0D0D;
+    font-size: 3.2rem; /* Define un tamaño grande */
+    color: #0D0D0D; /* Establece el color negro */
 }
+
+/* Párrafo de las ideas */
 
 .idea__parrafo {
-    font-size: 25px;
-    color: #000000;
-    font-family: 'Gill Sans', 'Gill Sans MT', Calibri, 'Trebuchet MS', sans-serif;
+    font-size: 25px; /* Define el tamaño del texto */
+    color: #000000; /* Establece el color negro */
+    font-family: 'Gill Sans', 'Gill Sans MT', Calibri, 'Trebuchet MS', sans-serif; /* Define la tipografía */
 }
 
+/* =========================================================
+   11. ETIQUETAS DE LAS IDEAS
+   ========================================================= */
+
 .idea__tags {
-    margin: var(--e-5) 0 0;
-    padding: 0;
-    display: flex;
-    gap: var(--e-2);
-    list-style: none;
+    margin: var(--e-5) 0 0; /* Agrega espacio arriba */
+    padding: 0; /* Elimina el espacio interior */
+    display: flex; /* Activa Flexbox */
+    gap: var(--e-2); /* Separa las etiquetas */
+    list-style: none; /* Quita los puntos de la lista */
 }
 
 .idea__tags li {
-    padding: var(--e-1) var(--e-3);
-    border-radius: 999px;
-    background: rgb(81, 81, 82);
-    color: rgb(236, 146, 231);
-    font-size: .8rem;
+    padding: var(--e-1) var(--e-3); /* Agrega espacio interior */
+    border-radius: 999px; /* Redondea las etiquetas */
+    background: rgb(81, 81, 82); /* Establece un fondo gris */
+    color: rgb(236, 146, 231); /* Cambia el color del texto */
+    font-size: 14px; /* Define el tamaño de la letra */
+    display: flex; /* Activa Flexbox */
+    align-items: center; /* Centra verticalmente */
 }
 
-.idea__tags:active {
-    background: var(--ritosa);
-}
-
-.idea__tags:focus-visible {
-    outline-offset: 3px;
-}
+/* =========================================================
+   12. TÍTULOS H4
+   ========================================================= */
 
 h4 {
-    font-family: 'Anton', sans-serif;
-    font-size: 70px;
-    font-weight: 900;
-    color: #040404;
+    font-family: 'Anton', sans-serif; /* Define la tipografía */
+    font-size: 70px; /* Establece el tamaño */
+    font-weight: 900; /* Hace la letra muy gruesa */
+    color: #040404; /* Establece el color negro */
 
+    /* Crea una sombra con varias capas */
     text-shadow:
         2px 2px 0 #969596,
         3px 3px 0 #b0aeb0,
@@ -366,135 +390,182 @@ h4 {
         6px 6px 0 #989798,
         7px 7px 10px rgba(0, 0, 0, 0.721);
 
-    display: flex;
-    justify-content: center;
-    align-items: center;
+    display: flex; /* Activa Flexbox */
+    justify-content: center; /* Centra horizontalmente */
+    align-items: center; /* Centra verticalmente */
 }
+
+/* =========================================================
+   13. ENCABEZADO Y MENÚ DE NAVEGACIÓN
+   ========================================================= */
 
 .container-header {
-    background: #ffc2e2;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
+    background: #ffc2e2; /* Establece el fondo del encabezado */
+    display: flex; /* Activa Flexbox */
+    justify-content: space-between; /* Separa los elementos hacia los extremos */
+    align-items: center; /* Centra verticalmente */
 }
+
+/* Imagen del encabezado */
 
 .img-logo {
-    width: 150px;
-    height: 150px;
-    padding: 10px;
-    border-radius: 30px;
+    width: 150px; /* Define el ancho */
+    height: 150px; /* Define la altura */
+    padding: 10px; /* Agrega espacio interior */
+    border-radius: 30px; /* Redondea las esquinas */
 }
+
+/* Crea un espacio vacío después del encabezado */
+
+.container-header::after {
+    content: ""; /* Crea contenido vacío */
+    flex: 0 0 170px; /* Establece un espacio fijo de 170px */
+}
+
+/* Navegación */
 
 .container-header nav {
-    padding: 10px;
-    margin: auto;
+    padding: 10px; /* Agrega espacio interior */
 }
+
+/* Lista de enlaces del menú */
 
 .container-header nav ul {
-    list-style: none;
-    display: flex;
-    gap: 7px;
+    list-style: none; /* Elimina los puntos de la lista */
+    display: flex; /* Coloca los enlaces en una fila */
+    gap: 7px; /* Separa los enlaces */
 }
+
+/* Enlaces del encabezado */
 
 .container-header a {
-    text-decoration: none;
-    text-transform: uppercase;
-    color: #590248;
-    font-weight: 800;
-    font-size: 1.2rem;
-    transition: background-color 0.5s ease;
+    text-decoration: none; /* Quita el subrayado */
+    text-transform: uppercase; /* Convierte las letras en mayúsculas */
+    color: #590248; /* Establece el color */
+    font-weight: 800; /* Hace la letra más gruesa */
+    font-size: 1.2rem; /* Define el tamaño */
+    transition: background-color 0.5s ease; /* Suaviza el cambio de fondo */
 }
 
-:root {
-    --violeta: var(--fusia);
-}
+/* Cambia el estilo al pasar el mouse */
 
 .container-header a:hover {
-    background-color: #f5f4f8;
-    padding: 5px;
-    border-radius: 8px;
+    background-color: #f5f4f8; /* Cambia el fondo */
+    padding: 5px; /* Agrega espacio interior */
+    border-radius: 8px; /* Redondea las esquinas */
 }
 
+/* =========================================================
+   14. FOOTER O PIE DE PÁGINA
+   ========================================================= */
+
+/* Parte superior del footer */
+
 .footer-top {
-    justify-content: space-between;
-    display: flex;
+    justify-content: space-between; /* Separa los elementos */
+    display: flex; /* Activa Flexbox */
 }
+
+/* Estilos de los enlaces del footer */
 
 .footer-top a,
 .footer-botton a {
-    color: #f2f2f2;
-    text-decoration: none;
+    color: #f2f2f2; /* Establece el color blanco */
+    text-decoration: none; /* Quita el subrayado */
 }
+
+/* Títulos dentro de puntito */
 
 .puntito h5 {
-    width: 12px;
-    height: 12px;
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    font-size: 20px;
-    display: inline;
-    color: #D99AAB;
-    padding: 10px;
-    font-size: x-large;
+    width: 12px; /* Define el ancho */
+    height: 12px; /* Define la altura */
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; /* Define la tipografía */
+    display: inline; /* Permite que el elemento esté en línea */
+    color: #D99AAB; /* Establece el color */
+    padding: 10px; /* Agrega espacio interior */
+    font-size: x-large; /* Establece un tamaño grande */
 }
+
+/* Parte inferior del footer */
 
 .footer-botton {
-    font-family: 'Courier New', Courier, monospace;
-    font-size: 20px;
-    padding: 12rem 25rem;
-    border: 2px solid #7d7d7d;
-    border-radius: 10px;
-    width: 12px;
-    height: 12px;
+    font-family: 'Courier New', Courier, monospace; /* Define la tipografía */
+    font-size: 20px; /* Define el tamaño */
+    padding: 12rem 25rem; /* Agrega espacio interior */
+    border: 2px solid #7d7d7d; /* Agrega un borde gris */
+    border-radius: 10px; /* Redondea las esquinas */
+    width: 12px; /* Define el ancho */
+    height: 12px; /* Define la altura */
 }
+
+/* Fondo general del footer */
 
 .footer {
-    background-color: #0D0D0D;
-    border-width: 0;
-    margin: auto;
-    padding: 10px;
+    background-color: #0D0D0D; /* Establece un fondo negro */
+    border-width: 0; /* Elimina el grosor del borde */
+    margin: auto; /* Distribuye automáticamente los márgenes */
+    padding: 10px; /* Agrega espacio interior */
+    justify-content: center; /* Centra los elementos */
 }
+
+/* Lista de enlaces */
 
 .puntito ul {
-    list-style: none;
-    padding-left: 0;
+    list-style: none; /* Elimina los puntos de la lista */
+    padding-left: 0; /* Elimina el espacio izquierdo */
 }
+
+/* Enlaces dentro de puntito */
 
 .puntito a {
-    font-size: larger;
-    font-family: 'Gill Sans', 'Gill Sans MT', Calibri, 'Trebuchet MS', sans-serif;
+    font-size: larger; /* Aumenta el tamaño de la letra */
+    font-family: 'Gill Sans', 'Gill Sans MT', Calibri, 'Trebuchet MS', sans-serif; /* Define la tipografía */
 }
+
+/* Imagen de la parte inferior */
 
 .footer-booton-img {
-    width: 50px;
-    height: 25px;
+    width: 50px; /* Define el ancho */
+    height: 25px; /* Define la altura */
 }
 
+/* Texto final del footer */
+
 .final {
-    width: auto;
-    height: auto;
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    font-size: 20px;
-    display: block;
-    color: #D99AAB;
-    padding: 10px;
+    width: auto; /* Adapta el ancho al contenido */
+    height: auto; /* Adapta la altura al contenido */
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; /* Define la tipografía */
+    font-size: 20px; /* Define el tamaño */
+    display: block; /* Ocupa una línea completa */
+    color: #D99AAB; /* Establece el color */
+    padding: 10px; /* Agrega espacio interior */
+    text-align: center; /* Centra el texto */
 }
+
+/* Estilos generales de títulos y enlaces */
 
 .h5,
 a {
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    font-size: 20px;
-    display: inline;
-    color: #D99AAB;
-    padding: 10px;
-    font-size: x-large;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; /* Define la tipografía */
+    text-align: center; /* Centra el texto */
+    text-decoration: none; /* Quita la decoración */
+    font-size: 20px; /* Define el tamaño */
+    color: #df84cf; /* Establece el color */
 }
 
-.mate {
-    font-family: 'Anton', sans-serif;
-    font-size: 70px;
-    font-weight: 900;
-    color: #040404;
+/* =========================================================
+   15. SECCIÓN DEL MATE
+   ========================================================= */
 
+/* Título principal de la sección */
+
+.mate {
+    font-family: 'Anton', sans-serif; /* Define la tipografía */
+    font-size: 70px; /* Establece un tamaño grande */
+    font-weight: 900; /* Hace la letra más gruesa */
+    color: #040404; /* Establece el color negro */
+
+    /* Agrega sombras para crear profundidad */
     text-shadow:
         2px 2px 0 #dedede,
         3px 3px 0 #b0aeb0,
@@ -503,24 +574,152 @@ a {
         6px 6px 0 #989798,
         7px 7px 10px rgba(0, 0, 0, 0.721);
 
-    display: flex;
-    justify-content: center;
-    align-items: center;
+    display: flex; /* Activa Flexbox */
+    justify-content: center; /* Centra horizontalmente */
+    align-items: center; /* Centra verticalmente */
 }
 
+/* Texto de la sección del mate */
+
 .texto-m {
-    max-width: 1200px;
-    margin: 15px auto;
-    padding: 20px;
-    text-align: center;
-    font-size: 20px;
-    line-height: 1.6;
-    color: #570146;
+    max-width: 1200px; /* Establece el ancho máximo */
+    margin: 15px auto; /* Centra el texto y agrega margen vertical */
+    padding: 20px; /* Agrega espacio interior */
+    text-align: center; /* Centra el texto */
+    font-size: 20px; /* Define el tamaño */
+    line-height: 1.6; /* Separa las líneas */
+    color: #570146; /* Establece el color */
 }
-.seccion-mate{
-    max-width: 1100px;
-    margin: 30px auto;
-    padding: 40px;
-    background-color: #f5d8eba8;
-    border-radius: 10px;
+
+/* Caja que contiene la sección del mate */
+
+.seccion-mate {
+    max-width: 1100px; /* Establece el ancho máximo */
+    margin: 30px auto; /* Centra la sección y agrega margen */
+    padding: 40px; /* Agrega espacio interior */
+    background-color: #f5d8eba8; /* Establece un fondo rosado con transparencia */
+    border-radius: 10px; /* Redondea las esquinas */
+}
+
+/* Caja de contenido del mate */
+
+.caja-mate {
+    display: flex; /* Activa Flexbox */
+    gap: 20px; /* Separa los elementos */
+    width: 300px; /* Define el ancho */
+    height: 300px; /* Define la altura */
+    border: 2px solid #333; /* Agrega un borde */
+    border-radius: 15px; /* Redondea las esquinas */
+    padding: 10px; /* Agrega espacio interior */
+    background-color: rgb(219, 144, 212); /* Establece el fondo */
+}
+
+/* Imagen dentro de la caja del mate */
+
+.caj-img {
+    width: 15%; /* Define el ancho */
+    height: 10%; /* Define la altura */
+    object-fit: cover; /* Recorta la imagen para llenar el espacio */
+    border-radius: 20px; /* Redondea las esquinas */
+}
+
+/* =========================================================
+   16. BOTÓN VOLVER ARRIBA
+   ========================================================= */
+
+.btn-mate {
+    background-color: #D99AAB; /* Establece el fondo */
+    color: #0D0D0D; /* Cambia el color del texto */
+    padding: 10px 25px; /* Agrega espacio interior */
+    border: none; /* Elimina el borde */
+    border-radius: 25px; /* Redondea las esquinas */
+    font-size: 15px; /* Define el tamaño de la letra */
+    font-weight: bold; /* Coloca el texto en negrita */
+    cursor: pointer; /* Cambia el cursor a una mano */
+    transition: 0.3s; /* Suaviza los cambios */
+    text-align: center; /* Centra el texto */
+}
+
+/* Efecto cuando pasamos el mouse */
+
+.btn-mate:hover {
+    background-color: #edb0da; /* Cambia el fondo */
+    transform: scale(1.05); /* Agranda un poquito el botón */
+}
+
+/* =========================================================
+   17. DERECHOS RESERVADOS
+   ========================================================= */
+
+.final .finalfou {
+    color: #a9a9a9; /* Establece el color gris */
+    font-size: 12px; /* Reduce el tamaño de la letra */
+    margin-top: 25px; /* Agrega espacio arriba */
+    text-align: center; /* Centra el texto */
+}
+
+/* =========================================================
+   18. EFECTOS AL PASAR EL MOUSE EN EL FOOTER
+   ========================================================= */
+
+/* Efecto sobre cada elemento del footer */
+
+.footer-top .puntito {
+    transition: all 0.3s ease; /* Suaviza todos los cambios */
+    padding: 10px; /* Agrega espacio interior */
+    border-radius: 10px; /* Redondea las esquinas */
+}
+
+/* Cambia el fondo y mueve el elemento hacia arriba */
+
+.footer-top .puntito:hover {
+    background-color: #292029; /* Cambia el fondo */
+    transform: translateY(-5px); /* Mueve el elemento 5px hacia arriba */
+}
+
+/* Suaviza el cambio de color de los enlaces */
+
+.footer-top .puntito a {
+    transition: color 0.3s ease;
+}
+
+/* Cambia el color del enlace al pasar el mouse */
+
+.footer-top .puntito a:hover {
+    color: #edb0da;
+}
+
+/* =========================================================
+   19. CONTADOR DE TIEMPO
+   ========================================================= */
+
+/* Caja que muestra cuánto tiempo lleva una persona en la página */
+
+.contador-tiempo {
+    position: fixed; /* Mantiene el contador fijo en la pantalla */
+    bottom: 15px; /* Lo ubica a 15px del borde inferior */
+    right: 15px; /* Lo ubica a 15px del borde derecho */
+    background-color: #0D0D0D; /* Establece un fondo negro */
+    color: #D99AAB; /* Cambia el color del texto */
+    padding: 12px 18px; /* Agrega espacio interior */
+    border: 1px solid #D99AAB; /* Agrega un borde */
+    border-radius: 20px; /* Redondea las esquinas */
+    font-family: Arial, sans-serif; /* Define la tipografía */
+    font-size: 14px; /* Define el tamaño de la letra */
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.4); /* Agrega una sombra */
+}
+
+/* Estilo del número que muestra los minutos y segundos */
+
+.contador-tiempo strong {
+    color: #edb0da; /* Cambia el color del tiempo */
+    margin-left: 5px; /* Separa el tiempo del texto */
+}
+
+/* =========================================================
+   20. ENLACE ESPECIAL
+   ========================================================= */
+
+.a-fou {
+    color: #ffffff; /* Establece el color blanco del enlace */
 }

@@ -7,12 +7,19 @@
     <title>Document</title>
     <link rel="stylesheet" href="css/estilo.css">
 </head>
+<div class="contador-tiempo">
+    <span>⏱️ Tiempo en la página:</span>
+    <strong id="tiempo">00:00</strong>
+</div>
 
 <body id="iidea">
     <header class="container-header">
+        <a href="index.html">
+            <img src="./asset/charla.jpg" alt="Charlas TED" class="img-logo">
+        </a>
 
 
-        <img src="./asset/charla.jpg" alt="Charlas TED" class="img-logo">
+
 
         <nav>
 
@@ -26,12 +33,18 @@
 
     </header>
     <main>
+        <h1 class="mate"><strong>sus charlas</strong></h1>
         <section class="seccion-mate">
-            <h1 class="mate"><strong>sus charlas</strong></h1>
-            <p class="texto-m"><strong>Cuando nos juntamos a tomar mate, siempre aparece algún tema de conversación.
-                    Empezamos hablando de cómo
-                    estuvo el día, qué hicimos, qué nos pasó o qué tenemos para contar. También de hsbla de
-                    chismes, las anécdotas, los problemas.<p></strong>
+
+            <div  style="display: flex;" >
+                <img src="./asset/amigossssss.jpg" alt="" class="caj-img">
+                <p class="texto-m"><strong>Cuando nos juntamos a tomar mate, siempre aparece algún tema de conversación.
+                        Empezamos hablando de cómo
+                        estuvo el día, qué hicimos, qué nos pasó o qué tenemos para contar.
+                        También de hsbla de
+                        chismes, las anécdotas, los problemas.</strong></p>
+            </div>
+
 
             <p class="texto-m"> <strong>Aprovechamos esos momentos para pedir consejos, contar algo que nos
                     preocupa o simplemente
@@ -39,12 +52,14 @@
                     pasamos
                     horas hablando sin darnos cuenta.</strong></p>
 
+
             <p class="texto-m"><strong>lo lindo del mate es que nunca sabemos cómo va a terminar una charla.
                     Podemos empezar hablando de algo sin
                     importancia y terminar hablando de todo. Porque, al final, el mate es una excusa para juntarnos,
                     compartir
                     nuestras cosas y disfrutar de un buen momento con los demás.</strong>
             <p></strong>
+
         </section>
 
     </main>
@@ -100,22 +115,38 @@
 
         </div>
 
+        <!-- LINEA DIVISORIA -->
+        <hr class="linea-footer">
+
+        <!-- PARTE INFERIOR -->
         <div class="final">
 
             <section class="puntito">
-                <h5><strong>El mate nos une</strong></h5>
-                <a href="">Tradición</a>
+
+                <h5><strong>🧉 El mate nos une</strong></h5>
+
+                <p>
+                    Una charla, un mate y un momento para compartir.
+                </p>
+
+                <a href="" class="a-fou">nuestra tradición</a>
+
             </section>
+
+            <!-- BOTON VOLVER ARRIBA -->
+            <button class="btn-mate" onclick="window.scrollTo({top: 0, behavior: 'smooth'})">
+                Volver arriba
+            </button>
+
+            <!-- DERECHOS RESERVADOS -->
+            <p class="finalfou">
+                2026 - Mate, charla y tradición
+            </p>
 
         </div>
 
-        <section class="footer-booton-cards">
-
-
-
-        </section>
-
     </footer>
+
 
 </body>
 
